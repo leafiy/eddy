@@ -119,14 +119,35 @@ enum Compressor {
         return best
     }
 
+    /// Two candidates, smaller wins:
+    /// 1. lossless: RIFF-level EXIF/XMP/ICC strip, bitstream untouched
+    ///    (also the only path for animated WebP)
+    /// 2. lossy: bundled libwebp re-encode at the quality slider
+    /// Falls back to the untouched original ("0%") when neither is smaller —
+    /// typical for files that were already produced by an optimizer.
     private static func recompressWebP(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
-        guard frameCount(of: fileURL) <= 1 else {
-            throw CompressionError.encodingUnsupported("animated WebP is not supported")
+        let original = try Data(contentsOf: fileURL)
+        var best: (url: URL, size: Int)? = nil
+
+        if let strippedData = WebPStripper.stripped(original), strippedData.count < original.count {
+            let url = tempDir.appendingPathComponent("stripped.webp")
+            try strippedData.write(to: url)
+            best = (url, strippedData.count)
         }
-        let encoded = try WebPEncoder.encode(try decodedFrame(fileURL), quality: quality)
-        let output = tempDir.appendingPathComponent("out.webp")
-        try encoded.write(to: output)
-        return output
+
+        if frameCount(of: fileURL) <= 1,
+           let frame = try? decodedFrame(fileURL),
+           let encoded = try? WebPEncoder.encode(frame, quality: quality),
+           best == nil || encoded.count < best!.size {
+            let url = tempDir.appendingPathComponent("out.webp")
+            try encoded.write(to: url)
+            best = (url, encoded.count)
+        }
+
+        // No candidate improved on the input: hand the original back so the
+        // caller reports "unchanged" instead of failing. optimize() never
+        // replaces a file that isn't strictly smaller, so this is inert.
+        return best?.url ?? fileURL
     }
 
     private static func recompressAVIF(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
