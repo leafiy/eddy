@@ -14,8 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Files dropped on the Dock icon or opened via "Open With".
     func application(_ application: NSApplication, open urls: [URL]) {
         let percent = UserDefaults.standard.object(forKey: "compressionQuality") as? Double ?? 80
+        let maxWidth = UserDefaults.standard.integer(forKey: "resizeMaxWidth")
         Task { @MainActor in
-            Store.shared.add(urls: urls, quality: percent / 100)
+            Store.shared.add(urls: urls, quality: percent / 100, maxWidth: maxWidth)
         }
     }
 }

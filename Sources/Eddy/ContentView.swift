@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @ObservedObject private var store = Store.shared
     @AppStorage("compressionQuality") private var qualityPercent = 80.0
+    @AppStorage("resizeMaxWidth") private var resizeMaxWidth = 0
     @State private var isDropTargeted = false
     @State private var showingOpenPanel = false
 
@@ -11,16 +12,17 @@ struct ContentView: View {
         content
             .frame(minWidth: 640, minHeight: 400)
             .dropDestination(for: URL.self) { urls, _ in
-                store.add(urls: urls, quality: qualityPercent / 100)
+                store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth)
                 return true
             } isTargeted: { isDropTargeted = $0 }
             .onPasteCommand(of: [.fileURL]) { providers in
                 let quality = qualityPercent / 100
+                let maxWidth = resizeMaxWidth
                 for provider in providers {
                     _ = provider.loadObject(ofClass: URL.self) { url, _ in
                         guard let url else { return }
                         Task { @MainActor in
-                            Store.shared.add(urls: [url], quality: quality)
+                            Store.shared.add(urls: [url], quality: quality, maxWidth: maxWidth)
                         }
                     }
                 }
@@ -31,7 +33,7 @@ struct ContentView: View {
                 allowsMultipleSelection: true
             ) { result in
                 if case .success(let urls) = result {
-                    store.add(urls: urls, quality: qualityPercent / 100)
+                    store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth)
                 }
             }
             .overlay {
@@ -130,6 +132,20 @@ struct ContentView: View {
                     .frame(width: 40, alignment: .leading)
             }
             .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
+        }
+        ToolbarItem(placement: .automatic) {
+            Picker("Size", selection: $resizeMaxWidth) {
+                Text("Original size").tag(0)
+                Divider()
+                Text("800 px — blogs").tag(800)
+                Text("1080 px — Instagram").tag(1080)
+                Text("1200 px — X / Facebook").tag(1200)
+                Text("1600 px").tag(1600)
+                Text("2048 px — high-res").tag(2048)
+            }
+            .pickerStyle(.menu)
+            .fixedSize()
+            .help("Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files.")
         }
         ToolbarItem(placement: .automatic) {
             Button {
