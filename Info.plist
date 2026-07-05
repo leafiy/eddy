@@ -7,7 +7,7 @@
 	<key>CFBundleExecutable</key>
 	<string>eddy</string>
 	<key>CFBundleIdentifier</key>
-	<string>local.eddy</string>
+	<string>com.leafiy.eddy</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

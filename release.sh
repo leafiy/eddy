@@ -20,14 +20,29 @@ OWNER_REPO=$(git remote get-url origin | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]
 
 # Optional Developer ID signing + notarization (removes all Gatekeeper
 # friction for downloaders). One-time setup:
-#   1. Developer ID Application certificate in your keychain
+#   1. Developer ID Application certificate for team Q478GZN2AV in your keychain
 #   2. xcrun notarytool store-credentials "eddy-notary" \
-#          --apple-id you@example.com --team-id TEAMID --password <app-specific>
+#          --apple-id tmly2006@gmail.com --team-id Q478GZN2AV --password <app-specific>
 # Then release with:
-#   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 #   NOTARY_PROFILE="eddy-notary" GITEA_TOKEN=... sh release.sh v1.1
-SIGN_IDENTITY="${SIGN_IDENTITY:--}"   # "-" = ad-hoc (unsigned distribution)
+APPLE_ID="${APPLE_ID:-tmly2006@gmail.com}"
+TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+
+if [ -z "$SIGN_IDENTITY" ]; then
+    SIGN_IDENTITY=$(security find-identity -v -p codesigning \
+        | sed -n "s/.*\"\(Developer ID Application: .*($TEAM_ID)\)\".*/\1/p" \
+        | head -n 1)
+fi
+if [ -z "$SIGN_IDENTITY" ]; then
+    SIGN_IDENTITY="-"
+    echo "warning: Developer ID Application certificate for team $TEAM_ID not found; DMGs will not be notarized for public distribution"
+elif [ -z "$NOTARY_PROFILE" ]; then
+    echo "info: Developer ID certificate found, but notarization is disabled"
+    echo "info: create credentials with: xcrun notarytool store-credentials \"eddy-notary\" --apple-id $APPLE_ID --team-id $TEAM_ID --password <app-specific>"
+    echo "info: then release with: NOTARY_PROFILE=\"eddy-notary\" GITEA_TOKEN=... sh release.sh"
+fi
 
 build_dmg() { # $1 = arch
     arch="$1"
@@ -45,6 +60,10 @@ build_dmg() { # $1 = arch
     [ -f build/AppIcon.icns ] && cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
     if [ "$SIGN_IDENTITY" = "-" ]; then
         codesign --force --sign - "$app"
+        if [ -n "$NOTARY_PROFILE" ]; then
+            echo "warning: NOTARY_PROFILE is set but signing is ad-hoc; skipping notarization"
+            NOTARY_PROFILE=""
+        fi
     else
         # Hardened runtime + secure timestamp are notarization requirements.
         codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$app"
@@ -92,7 +111,7 @@ json_id() { /usr/bin/python3 -c 'import sys,json;print(json.load(sys.stdin)["id"
 # tags main automatically).
 release_id=$(curl -sf -H "$AUTH" "$API/releases/tags/$VERSION" 2>/dev/null | json_id 2>/dev/null || true)
 if [ -z "$release_id" ]; then
-    body="Image compressor for macOS 13+.\n\nRecommended install (no Gatekeeper warnings, appears in Launchpad right away):\n\n    curl -fsSL $GITEA_URL/$OWNER_REPO/raw/branch/main/install.sh | sh\n\nManual install: download eddy-$VERSION-arm64.dmg (Apple Silicon) or eddy-$VERSION-x86_64.dmg (Intel), drag eddy into Applications. Browser downloads are quarantined by macOS, so the first launch needs right-click -> Open, or:\n\n    xattr -dr com.apple.quarantine /Applications/eddy.app"
+    body="Image compressor for macOS 13+.\n\nRecommended install:\n\n    curl -fsSL $GITEA_URL/$OWNER_REPO/raw/branch/main/install.sh | sh\n\nManual install: download eddy-$VERSION-arm64.dmg (Apple Silicon) or eddy-$VERSION-x86_64.dmg (Intel), drag eddy into Applications."
     release_id=$(curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
         -d "{\"tag_name\":\"$VERSION\",\"name\":\"eddy $VERSION\",\"body\":\"$body\",\"target_commitish\":\"main\"}" \
         "$API/releases" | json_id)

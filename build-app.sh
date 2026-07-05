@@ -4,6 +4,9 @@
 set -eu
 cd "$(dirname "$0")"
 
+TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
+SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+
 # Native build for this Mac's CPU by default (works on Intel and Apple
 # Silicon alike). UNIVERSAL=1 sh build-app.sh builds one app for both.
 ARCH_FLAGS=""
@@ -35,7 +38,18 @@ cp "$BIN_DIR/eddy" "$APP/Contents/MacOS/eddy"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 [ -f logo.png ] && make_icns "$APP/Contents/Resources/AppIcon.icns"
 
-# Ad-hoc signature so it launches on Apple Silicon.
-codesign --force --sign - "$APP"
+if [ -z "$SIGN_IDENTITY" ]; then
+    SIGN_IDENTITY=$(security find-identity -v -p codesigning \
+        | sed -n "s/.*\"\(Developer ID Application: .*($TEAM_ID)\)\".*/\1/p" \
+        | head -n 1)
+fi
+
+if [ -n "$SIGN_IDENTITY" ]; then
+    # Hardened runtime + secure timestamp are required for notarized distribution.
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+else
+    echo "warning: Developer ID Application certificate for team $TEAM_ID not found; using ad-hoc signature"
+    codesign --force --sign - "$APP"
+fi
 
 echo "Done: $(pwd)/$APP"
