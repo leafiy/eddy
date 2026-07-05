@@ -30,7 +30,6 @@ check pngquant  pngquant
 check oxipng    oxipng
 check jpegoptim jpegoptim
 check gifsicle  gifsicle
-check cwebp     webp
 check avifenc   libavif
 
 if [ -n "$missing" ]; then

@@ -34,7 +34,6 @@ enum Tools {
     static let optipng   = find("optipng")
     static let jpegoptim = find("jpegoptim")
     static let gifsicle  = find("gifsicle")
-    static let cwebp     = find("cwebp")
     static let avifenc   = find("avifenc")
 
     static func find(_ name: String) -> URL? {
@@ -89,7 +88,6 @@ enum Tools {
         Availability(name: "oxipng",    url: oxipng,    brewFormula: "oxipng"),
         Availability(name: "jpegoptim", url: jpegoptim, brewFormula: "jpegoptim"),
         Availability(name: "gifsicle",  url: gifsicle,  brewFormula: "gifsicle"),
-        Availability(name: "cwebp",     url: cwebp,     brewFormula: "webp"),
         Availability(name: "avifenc",   url: avifenc,   brewFormula: "libavif"),
     ]
 

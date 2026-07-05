@@ -30,7 +30,7 @@ struct CompressionOutcome {
 ///   PNG   pngquant (lossy quantization, quality slider) + oxipng/optipng (lossless)
 ///   JPEG  jpegoptim (--max quality, strips all metadata, progressive)
 ///   GIF   gifsicle -O3 (animations preserved)
-///   WebP  cwebp (via ImageIO decode, so orientation is baked in)
+///   WebP  bundled libwebp (in-process, no external binary needed)
 ///   AVIF  avifenc (via ImageIO decode)
 ///   BMP/TIFF/HEIC and any missing tool: ImageIO re-encode fallback.
 /// Every path strips EXIF/GPS/XMP/orientation metadata, never resizes pixels,
@@ -153,19 +153,17 @@ enum Compressor {
     }
 
     private static func recompressWebP(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
-        guard let cwebp = Tools.cwebp else {
-            // macOS 14+ can encode WebP through ImageIO; older systems get the hint.
-            return try imageIOReencode(fileURL, quality, tempDir)
-        }
         guard frameCount(of: fileURL) <= 1 else {
             throw CompressionError.encodingUnsupported("animated WebP is not supported")
         }
-        let decoded = try imageIODecodeToPNG(fileURL, tempDir)
+        // Decode with orientation baked in, encode with the bundled libwebp;
+        // no metadata is carried over.
+        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+              let frame = renderedFrame(source: source, index: 0)
+        else { throw CompressionError.unknownFormat }
+        let encoded = try WebPEncoder.encode(frame, quality: quality)
         let output = tempDir.appendingPathComponent("out.webp")
-        try Tools.run(cwebp, [
-            "-quiet", "-q", "\(percent(quality))", "-m", "6", "-metadata", "none",
-            "-o", output.path, "--", decoded.path,
-        ])
+        try encoded.write(to: output)
         return output
     }
 
@@ -248,14 +246,13 @@ enum Compressor {
 
     private static func encoderHint(for ext: String) -> String {
         switch ext {
-        case "webp": return "WebP encoder missing — run: brew install webp"
         case "avif": return "AVIF encoder missing — run: brew install libavif"
         default:     return "no encoder available for .\(ext) on this macOS"
         }
     }
 
     /// Decodes frame 0 to a temp PNG with orientation baked in and zero metadata.
-    /// Used as the hand-off format for cwebp/avifenc.
+    /// Used as the hand-off format for avifenc.
     private static func imageIODecodeToPNG(_ fileURL: URL, _ tempDir: URL) throws -> URL {
         guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
               let frame = renderedFrame(source: source, index: 0)
