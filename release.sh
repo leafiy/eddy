@@ -26,11 +26,12 @@ build_dmg() { # $1 = arch
 
     app="build/$arch/eddy.app"
     rm -rf "build/$arch"
-    mkdir -p "$app/Contents/MacOS"
+    mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp Info.plist "$app/Contents/Info.plist"
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION#v}" "$app/Contents/Info.plist"
     cp "$bin_dir/eddy" "$app/Contents/MacOS/eddy"
     printf 'APPL????' > "$app/Contents/PkgInfo"
+    [ -f build/AppIcon.icns ] && cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
     codesign --force --sign - "$app"
 
     # DMG layout: the app plus an /Applications shortcut for drag-install.
@@ -45,6 +46,19 @@ build_dmg() { # $1 = arch
 }
 
 mkdir -p build
+
+# App icon: logo.png -> AppIcon.icns, once (arch-independent).
+if [ -f logo.png ]; then
+    iconset="build/AppIcon.iconset"
+    rm -rf "$iconset"
+    mkdir -p "$iconset"
+    for size in 16 32 128 256 512; do
+        sips -z "$size" "$size" logo.png --out "$iconset/icon_${size}x${size}.png" >/dev/null
+        sips -z "$((size * 2))" "$((size * 2))" logo.png --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+    done
+    iconutil -c icns "$iconset" -o build/AppIcon.icns
+    rm -rf "$iconset"
+fi
 build_dmg arm64
 build_dmg x86_64
 
