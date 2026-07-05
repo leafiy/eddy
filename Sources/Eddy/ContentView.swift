@@ -44,9 +44,20 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             Text("Drop images here")
                 .font(.title2)
-            Text("JPEG · PNG · GIF · BMP · WebP · TIFF · HEIC — compressed and saved in place")
+            Text("JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC — compressed and saved in place")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            if !Tools.missingFormulae.isEmpty {
+                VStack(spacing: 4) {
+                    Text("For real compression install the optimizer engines:")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                    Text("brew install \(Tools.missingFormulae.joined(separator: " "))")
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                }
+                .padding(.top, 8)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

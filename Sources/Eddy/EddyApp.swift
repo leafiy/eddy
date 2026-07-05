@@ -21,11 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @main
-struct PicShrinkApp: App {
+struct EddyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("PicShrink") {
+        WindowGroup("eddy") {
             ContentView()
         }
         .windowResizability(.contentMinSize)

@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "PicShrink",
+    name: "eddy",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "PicShrink",
-            path: "Sources/PicShrink"
+            name: "eddy",
+            path: "Sources/Eddy"
         )
     ]
 )
