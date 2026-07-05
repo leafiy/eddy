@@ -29,11 +29,12 @@ struct CompressionOutcome {
 /// Fully self-contained pipeline — every engine is compiled into the app:
 ///   PNG   bundled libimagequant (pngquant's engine) + own indexed-PNG writer
 ///   JPEG  ImageIO progressive re-encode AND lossless metadata strip; smaller wins
-///   WebP  bundled libwebp
+///   WebP  bundled libwebp + lossless RIFF metadata strip; smaller wins
 ///   AVIF  bundled libavif + libaom
 ///   GIF/BMP/TIFF/HEIC  ImageIO re-encode
-/// Every path strips EXIF/GPS/XMP/orientation metadata, never resizes pixels,
-/// and only overwrites the original when the result is smaller.
+/// Every path strips EXIF/GPS/XMP/orientation metadata and only overwrites the
+/// original when the result is smaller. `maxWidth` > 0 downscales to that
+/// width (aspect ratio kept, never upscales); 0 keeps the original size.
 enum Compressor {
 
     static let supportedExtensions: Set<String> = [
@@ -41,7 +42,7 @@ enum Compressor {
         "tif", "tiff", "heic", "heif",
     ]
 
-    static func optimize(fileURL: URL, quality: Double) throws -> CompressionOutcome {
+    static func optimize(fileURL: URL, quality: Double, maxWidth: Int = 0) throws -> CompressionOutcome {
         guard let originalSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
               originalSize > 0
         else { throw CompressionError.unreadableFile }
@@ -52,7 +53,8 @@ enum Compressor {
         try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: tempDir) }
 
-        let candidate = try recompress(fileURL: fileURL, quality: quality, tempDir: tempDir)
+        let candidate = try recompress(
+            fileURL: fileURL, quality: quality, maxWidth: maxWidth, tempDir: tempDir)
         let newSize = fileSize(candidate)
         guard newSize > 0, newSize < originalSize else {
             return CompressionOutcome(originalBytes: originalSize, finalBytes: originalSize, replaced: false)
@@ -74,20 +76,26 @@ enum Compressor {
 
     // MARK: - Format dispatch
 
-    private static func recompress(fileURL: URL, quality: Double, tempDir: URL) throws -> URL {
+    private static func recompress(fileURL: URL, quality: Double, maxWidth: Int, tempDir: URL) throws -> URL {
         switch fileURL.pathExtension.lowercased() {
-        case "jpg", "jpeg", "jpe": return try recompressJPEG(fileURL, quality, tempDir)
-        case "png":                return try recompressPNG(fileURL, quality, tempDir)
-        case "webp":               return try recompressWebP(fileURL, quality, tempDir)
-        case "avif":               return try recompressAVIF(fileURL, quality, tempDir)
-        default:                   return try imageIOReencode(fileURL, quality, tempDir)
+        case "jpg", "jpeg", "jpe": return try recompressJPEG(fileURL, quality, maxWidth, tempDir)
+        case "png":                return try recompressPNG(fileURL, quality, maxWidth, tempDir)
+        case "webp":               return try recompressWebP(fileURL, quality, maxWidth, tempDir)
+        case "avif":               return try recompressAVIF(fileURL, quality, maxWidth, tempDir)
+        default:                   return try imageIOReencode(fileURL, quality, maxWidth, tempDir)
         }
+    }
+
+    /// True when `maxWidth` would actually shrink this file — lossless
+    /// candidates (which can't resize) are only valid when it wouldn't.
+    private static func needsResize(_ fileURL: URL, _ maxWidth: Int) -> Bool {
+        maxWidth > 0 && effectivePixelWidth(of: fileURL) > maxWidth
     }
 
     /// pngquant-style lossy quantization; keep-if-smaller upstream guards the
     /// rare case where an already tiny palette PNG doesn't benefit.
-    private static func recompressPNG(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
-        let frame = try decodedFrame(fileURL)
+    private static func recompressPNG(_ fileURL: URL, _ quality: Double, _ maxWidth: Int, _ tempDir: URL) throws -> URL {
+        let frame = try decodedFrame(fileURL, maxWidth: maxWidth)
         let encoded = try PNGCoder.quantizedPNG(from: frame, quality: quality)
         let output = tempDir.appendingPathComponent("out.png")
         try encoded.write(to: output)
@@ -96,13 +104,14 @@ enum Compressor {
 
     /// Two candidates, smaller wins:
     /// 1. lossy: ImageIO progressive re-encode at the quality slider
-    ///    (also bakes orientation and strips metadata)
+    ///    (also bakes orientation, strips metadata, applies resize)
     /// 2. lossless: byte-level metadata strip, image data untouched
-    ///    (only when there is no orientation to bake)
-    private static func recompressJPEG(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
-        var best: URL? = try? imageIOReencode(fileURL, quality, tempDir)
+    ///    (only when no orientation to bake and no resize requested)
+    private static func recompressJPEG(_ fileURL: URL, _ quality: Double, _ maxWidth: Int, _ tempDir: URL) throws -> URL {
+        var best: URL? = try? imageIOReencode(fileURL, quality, maxWidth, tempDir)
 
-        if sourceOrientation(of: fileURL) == 1,
+        if !needsResize(fileURL, maxWidth),
+           sourceOrientation(of: fileURL) == 1,
            let original = try? Data(contentsOf: fileURL),
            let strippedData = JPEGStripper.stripped(original) {
             let strippedURL = tempDir.appendingPathComponent("stripped.jpg")
@@ -121,22 +130,23 @@ enum Compressor {
 
     /// Two candidates, smaller wins:
     /// 1. lossless: RIFF-level EXIF/XMP/ICC strip, bitstream untouched
-    ///    (also the only path for animated WebP)
+    ///    (also the only path for animated WebP; skipped when resizing)
     /// 2. lossy: bundled libwebp re-encode at the quality slider
     /// Falls back to the untouched original ("0%") when neither is smaller —
     /// typical for files that were already produced by an optimizer.
-    private static func recompressWebP(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
+    private static func recompressWebP(_ fileURL: URL, _ quality: Double, _ maxWidth: Int, _ tempDir: URL) throws -> URL {
         let original = try Data(contentsOf: fileURL)
         var best: (url: URL, size: Int)? = nil
 
-        if let strippedData = WebPStripper.stripped(original), strippedData.count < original.count {
+        if !needsResize(fileURL, maxWidth),
+           let strippedData = WebPStripper.stripped(original), strippedData.count < original.count {
             let url = tempDir.appendingPathComponent("stripped.webp")
             try strippedData.write(to: url)
             best = (url, strippedData.count)
         }
 
         if frameCount(of: fileURL) <= 1,
-           let frame = try? decodedFrame(fileURL),
+           let frame = try? decodedFrame(fileURL, maxWidth: maxWidth),
            let encoded = try? WebPEncoder.encode(frame, quality: quality),
            best == nil || encoded.count < best!.size {
             let url = tempDir.appendingPathComponent("out.webp")
@@ -150,8 +160,9 @@ enum Compressor {
         return best?.url ?? fileURL
     }
 
-    private static func recompressAVIF(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
-        let encoded = try AVIFEncoder.encode(try decodedFrame(fileURL), quality: quality)
+    private static func recompressAVIF(_ fileURL: URL, _ quality: Double, _ maxWidth: Int, _ tempDir: URL) throws -> URL {
+        let frame = try decodedFrame(fileURL, maxWidth: maxWidth)
+        let encoded = try AVIFEncoder.encode(frame, quality: quality)
         let output = tempDir.appendingPathComponent("out.avif")
         try encoded.write(to: output)
         return output
@@ -162,6 +173,7 @@ enum Compressor {
     private static func imageIOReencode(
         _ fileURL: URL,
         _ quality: Double,
+        _ maxWidth: Int,
         _ tempDir: URL
     ) throws -> URL {
         guard let source = CGImageSourceCreateWithURL(
@@ -195,9 +207,10 @@ enum Compressor {
         }
 
         for index in 0..<frameCount {
-            guard let frame = renderedFrame(source: source, index: index) else {
+            guard let rendered = renderedFrame(source: source, index: index) else {
                 throw CompressionError.encodeFailed
             }
+            let frame = resizedIfNeeded(rendered, maxWidth: maxWidth)
             var properties: [CFString: Any] = [:]
             if isLossy {
                 properties[kCGImageDestinationLossyCompressionQuality] = quality
@@ -226,12 +239,34 @@ enum Compressor {
 
     // MARK: - ImageIO decode helpers
 
-    /// Frame 0 at full resolution with EXIF orientation baked into the pixels.
-    private static func decodedFrame(_ fileURL: URL) throws -> CGImage {
+    /// Frame 0 with EXIF orientation baked into the pixels, downscaled to
+    /// `maxWidth` when requested.
+    private static func decodedFrame(_ fileURL: URL, maxWidth: Int) throws -> CGImage {
         guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
               let frame = renderedFrame(source: source, index: 0)
         else { throw CompressionError.unknownFormat }
-        return frame
+        return resizedIfNeeded(frame, maxWidth: maxWidth)
+    }
+
+    /// Width-based downscale keeping aspect ratio; never upscales.
+    private static func resizedIfNeeded(_ image: CGImage, maxWidth: Int) -> CGImage {
+        guard maxWidth > 0, image.width > maxWidth else { return image }
+        let scale = Double(maxWidth) / Double(image.width)
+        let newHeight = max(1, Int((Double(image.height) * scale).rounded()))
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                  data: nil,
+                  width: maxWidth,
+                  height: newHeight,
+                  bitsPerComponent: 8,
+                  bytesPerRow: maxWidth * 4,
+                  space: colorSpace,
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              )
+        else { return image }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: maxWidth, height: newHeight))
+        return context.makeImage() ?? image
     }
 
     private static func renderedFrame(source: CGImageSource, index: Int) -> CGImage? {
@@ -265,6 +300,17 @@ enum Compressor {
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         else { return 1 }
         return (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+    }
+
+    /// Pixel width as displayed — orientations 5-8 rotate 90°, swapping sides.
+    private static func effectivePixelWidth(of fileURL: URL) -> Int {
+        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        else { return 0 }
+        let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+        let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+        let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        return orientation >= 5 ? height : width
     }
 
     private static func frameCount(of fileURL: URL) -> Int {

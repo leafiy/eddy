@@ -58,7 +58,7 @@ final class Store: ObservableObject {
         }
     }
 
-    func add(urls: [URL], quality: Double) {
+    func add(urls: [URL], quality: Double, maxWidth: Int = 0) {
         var files: [URL] = []
         var skipped = 0
         let fm = FileManager.default
@@ -101,12 +101,12 @@ final class Store: ObservableObject {
         }
         items.append(contentsOf: newItems)
         updateDockBadge()
-        process(batch: newItems, quality: quality)
+        process(batch: newItems, quality: quality, maxWidth: maxWidth)
     }
 
     // MARK: - Processing
 
-    private func process(batch: [ImageItem], quality: Double) {
+    private func process(batch: [ImageItem], quality: Double, maxWidth: Int) {
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             await withTaskGroup(of: Void.self) { group in
@@ -115,18 +115,18 @@ final class Store: ObservableObject {
                 while next < min(width, batch.count) {
                     let item = batch[next]
                     next += 1
-                    group.addTask { await self.processOne(item, quality: quality) }
+                    group.addTask { await self.processOne(item, quality: quality, maxWidth: maxWidth) }
                 }
                 for await _ in group where next < batch.count {
                     let item = batch[next]
                     next += 1
-                    group.addTask { await self.processOne(item, quality: quality) }
+                    group.addTask { await self.processOne(item, quality: quality, maxWidth: maxWidth) }
                 }
             }
         }
     }
 
-    nonisolated private func processOne(_ item: ImageItem, quality: Double) async {
+    nonisolated private func processOne(_ item: ImageItem, quality: Double, maxWidth: Int) async {
         let thumbnail = Compressor.thumbnail(for: item.url)
         await MainActor.run {
             self.update(item.id) {
@@ -135,7 +135,7 @@ final class Store: ObservableObject {
             }
         }
         do {
-            let outcome = try Compressor.optimize(fileURL: item.url, quality: quality)
+            let outcome = try Compressor.optimize(fileURL: item.url, quality: quality, maxWidth: maxWidth)
             await MainActor.run {
                 self.update(item.id) {
                     $0.originalBytes = outcome.originalBytes
