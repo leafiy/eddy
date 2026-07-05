@@ -50,11 +50,11 @@ final class Store: ObservableObject {
         updateDockBadge()
     }
 
-    func showToast(_ message: String) {
+    func showToast(_ message: String, seconds: Double = 2.8) {
         toast = message
         toastTask?.cancel()
         toastTask = Task {
-            try? await Task.sleep(nanoseconds: 2_800_000_000)
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             toast = nil
         }
@@ -81,7 +81,7 @@ final class Store: ObservableObject {
         if let pngData = Self.imageData(from: pasteboard) {
             do {
                 let url = try Self.savePastedImage(pngData)
-                showToast("Pasted image saved to Downloads")
+                showToast("Pasted image saved to \((url.path as NSString).abbreviatingWithTildeInPath)", seconds: 5)
                 add(urls: [url], quality: quality, maxWidth: maxWidth)
             } catch {
                 showToast("Could not save the pasted image")
