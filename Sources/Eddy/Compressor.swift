@@ -302,6 +302,17 @@ enum Compressor {
         return (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
     }
 
+    /// Displayed pixel size (orientation-corrected), for the UI.
+    static func pixelDimensions(of fileURL: URL) -> (width: Int, height: Int)? {
+        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue
+        else { return nil }
+        let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        return orientation >= 5 ? (height, width) : (width, height)
+    }
+
     /// Pixel width as displayed — orientations 5-8 rotate 90°, swapping sides.
     private static func effectivePixelWidth(of fileURL: URL) -> Int {
         guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
