@@ -32,8 +32,9 @@ enum PNGCoder {
         liq_set_dithering_level(result, 1.0)
 
         var indices = [UInt8](repeating: 0, count: buffer.width * buffer.height)
-        let remapStatus = indices.withUnsafeMutableBytes { raw in
-            liq_write_remapped_image(result, liqImage, raw.baseAddress, raw.count)
+        let remapStatus = indices.withUnsafeMutableBytes { raw -> liq_error in
+            guard let base = raw.baseAddress else { return LIQ_INVALID_POINTER }
+            return liq_write_remapped_image(result, liqImage, base, raw.count)
         }
         guard remapStatus == LIQ_OK, let palettePointer = liq_get_palette(result) else {
             throw CompressionError.encodeFailed
