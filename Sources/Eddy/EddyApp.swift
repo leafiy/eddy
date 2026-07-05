@@ -30,5 +30,15 @@ struct EddyApp: App {
             ContentView()
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            // Menu command instead of onPasteCommand: works regardless of
+            // which view has focus.
+            CommandGroup(replacing: .pasteboard) {
+                Button("Paste Images") {
+                    Store.shared.pasteFromClipboard()
+                }
+                .keyboardShortcut("v", modifiers: .command)
+            }
+        }
     }
 }

@@ -60,6 +60,67 @@ final class Store: ObservableObject {
         }
     }
 
+    // MARK: - Clipboard
+
+    /// Handles Cmd+V: copied files are queued directly; raw image data
+    /// (screenshots, images copied from apps or browsers) is saved as a PNG
+    /// in Downloads and compressed there.
+    func pasteFromClipboard() {
+        let pasteboard = NSPasteboard.general
+        let quality = (UserDefaults.standard.object(forKey: "compressionQuality") as? Double ?? 80) / 100
+        let maxWidth = UserDefaults.standard.integer(forKey: "resizeMaxWidth")
+
+        if let urls = pasteboard.readObjects(
+               forClasses: [NSURL.self],
+               options: [.urlReadingFileURLsOnly: true]
+           ) as? [URL], !urls.isEmpty {
+            add(urls: urls, quality: quality, maxWidth: maxWidth)
+            return
+        }
+
+        if let pngData = Self.imageData(from: pasteboard) {
+            do {
+                let url = try Self.savePastedImage(pngData)
+                showToast("Pasted image saved to Downloads")
+                add(urls: [url], quality: quality, maxWidth: maxWidth)
+            } catch {
+                showToast("Could not save the pasted image")
+            }
+            return
+        }
+
+        showToast("No image in the clipboard")
+    }
+
+    private static func imageData(from pasteboard: NSPasteboard) -> Data? {
+        if let png = pasteboard.data(forType: .png) {
+            return png
+        }
+        if let tiff = pasteboard.data(forType: .tiff),
+           let bitmap = NSBitmapImageRep(data: tiff),
+           let png = bitmap.representation(using: .png, properties: [:]) {
+            return png
+        }
+        return nil
+    }
+
+    private static func savePastedImage(_ data: Data) throws -> URL {
+        let fm = FileManager.default
+        let directory = fm.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? fm.homeDirectoryForCurrentUser
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let base = "eddy-\(formatter.string(from: Date()))"
+        var url = directory.appendingPathComponent("\(base).png")
+        var counter = 2
+        while fm.fileExists(atPath: url.path) {
+            url = directory.appendingPathComponent("\(base)-\(counter).png")
+            counter += 1
+        }
+        try data.write(to: url)
+        return url
+    }
+
     func add(urls: [URL], quality: Double, maxWidth: Int = 0) {
         var files: [URL] = []
         var skipped = 0
