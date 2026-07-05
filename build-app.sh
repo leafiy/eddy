@@ -16,7 +16,7 @@ BIN_DIR=$(swift build -c release $ARCH_FLAGS --show-bin-path)
 
 # App icon: logo.png -> AppIcon.icns (all Finder/Dock sizes).
 make_icns() { # $1 = destination .icns path
-    iconset=".iconset-tmp"
+    iconset="AppIcon.iconset" # iconutil requires the .iconset extension
     rm -rf "$iconset"
     mkdir -p "$iconset"
     for size in 16 32 128 256 512; do

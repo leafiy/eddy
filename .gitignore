@@ -1,5 +1,5 @@
 .build/
 eddy.app/
 build/
-.iconset-tmp/
+*.iconset/
 .DS_Store
