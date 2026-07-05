@@ -1,3 +1,4 @@
 .build/
 eddy.app/
+build/
 .DS_Store
