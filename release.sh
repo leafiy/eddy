@@ -18,6 +18,17 @@ VERSION="${1:-v$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' 
 GITEA_URL="${GITEA_URL:-http://192.168.52.4:5010}"
 OWNER_REPO=$(git remote get-url origin | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')
 
+# Optional Developer ID signing + notarization (removes all Gatekeeper
+# friction for downloaders). One-time setup:
+#   1. Developer ID Application certificate in your keychain
+#   2. xcrun notarytool store-credentials "eddy-notary" \
+#          --apple-id you@example.com --team-id TEAMID --password <app-specific>
+# Then release with:
+#   SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+#   NOTARY_PROFILE="eddy-notary" GITEA_TOKEN=... sh release.sh v1.1
+SIGN_IDENTITY="${SIGN_IDENTITY:--}"   # "-" = ad-hoc (unsigned distribution)
+NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+
 build_dmg() { # $1 = arch
     arch="$1"
     echo "== building $arch =="
@@ -32,7 +43,12 @@ build_dmg() { # $1 = arch
     cp "$bin_dir/eddy" "$app/Contents/MacOS/eddy"
     printf 'APPL????' > "$app/Contents/PkgInfo"
     [ -f build/AppIcon.icns ] && cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
-    codesign --force --sign - "$app"
+    if [ "$SIGN_IDENTITY" = "-" ]; then
+        codesign --force --sign - "$app"
+    else
+        # Hardened runtime + secure timestamp are notarization requirements.
+        codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$app"
+    fi
 
     # DMG layout: the app plus an /Applications shortcut for drag-install.
     staging="build/$arch/dmg"
@@ -42,6 +58,11 @@ build_dmg() { # $1 = arch
     dmg="build/eddy-$VERSION-$arch.dmg"
     rm -f "$dmg"
     hdiutil create -volname "eddy" -srcfolder "$staging" -format UDZO -quiet "$dmg"
+    if [ -n "$NOTARY_PROFILE" ]; then
+        echo "notarizing $dmg (takes a few minutes)..."
+        xcrun notarytool submit "$dmg" --keychain-profile "$NOTARY_PROFILE" --wait
+        xcrun stapler staple "$dmg"
+    fi
     echo "made $dmg"
 }
 
@@ -71,7 +92,7 @@ json_id() { /usr/bin/python3 -c 'import sys,json;print(json.load(sys.stdin)["id"
 # tags main automatically).
 release_id=$(curl -sf -H "$AUTH" "$API/releases/tags/$VERSION" 2>/dev/null | json_id 2>/dev/null || true)
 if [ -z "$release_id" ]; then
-    body="Image compressor for macOS 13+. Pick eddy-$VERSION-arm64.dmg for Apple Silicon or eddy-$VERSION-x86_64.dmg for Intel Macs, open it, drag eddy into Applications."
+    body="Image compressor for macOS 13+.\n\nRecommended install (no Gatekeeper warnings, appears in Launchpad right away):\n\n    curl -fsSL $GITEA_URL/$OWNER_REPO/raw/branch/main/install.sh | sh\n\nManual install: download eddy-$VERSION-arm64.dmg (Apple Silicon) or eddy-$VERSION-x86_64.dmg (Intel), drag eddy into Applications. Browser downloads are quarantined by macOS, so the first launch needs right-click -> Open, or:\n\n    xattr -dr com.apple.quarantine /Applications/eddy.app"
     release_id=$(curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
         -d "{\"tag_name\":\"$VERSION\",\"name\":\"eddy $VERSION\",\"body\":\"$body\",\"target_commitish\":\"main\"}" \
         "$API/releases" | json_id)

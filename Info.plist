@@ -12,6 +12,10 @@
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>eddy</string>
+	<key>CFBundleDisplayName</key>
+	<string>eddy</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
