@@ -49,10 +49,12 @@ struct ContentView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if store.items.isEmpty {
-            emptyHint
-        } else {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
+            settingsBar
+            Divider()
+            if store.items.isEmpty {
+                emptyHint
+            } else {
                 List(store.items) { item in
                     ItemRow(item: item)
                 }
@@ -61,6 +63,41 @@ struct ContentView: View {
                 footer
             }
         }
+    }
+
+    /// Lives in the window content, not the toolbar: macOS toolbar items do
+    /// not reliably re-render on state changes, which froze these controls.
+    private var settingsBar: some View {
+        HStack(spacing: 20) {
+            HStack(spacing: 8) {
+                Text("Quality")
+                Slider(value: $qualityPercent, in: 10...100, step: 5)
+                    .frame(width: 140)
+                Text("\(Int(qualityPercent))%")
+                    .monospacedDigit()
+                    .frame(width: 40, alignment: .leading)
+            }
+            .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
+            HStack(spacing: 8) {
+                Text("Size")
+                Menu {
+                    sizeOption(0, "Original size")
+                    sizeOption(800, "800 px — blogs")
+                    sizeOption(1080, "1080 px — Instagram")
+                    sizeOption(1200, "1200 px — X / Facebook")
+                    sizeOption(1600, "1600 px")
+                    sizeOption(2048, "2048 px — high-res")
+                } label: {
+                    Text(resizeMaxWidth == 0 ? "Original size" : "≤ \(resizeMaxWidth) px")
+                }
+                .fixedSize()
+            }
+            .help("Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files.")
+            Spacer()
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     @ViewBuilder private var toastOverlay: some View {
@@ -121,33 +158,6 @@ struct ContentView: View {
             }
             .keyboardShortcut("o", modifiers: .command)
             .help("Choose images or folders (⌘O)")
-        }
-        ToolbarItem(placement: .automatic) {
-            HStack(spacing: 8) {
-                Text("Quality")
-                Slider(value: $qualityPercent, in: 10...100, step: 5)
-                    .frame(width: 140)
-                Text("\(Int(qualityPercent))%")
-                    .monospacedDigit()
-                    .frame(width: 40, alignment: .leading)
-            }
-            .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
-        }
-        ToolbarItem(placement: .automatic) {
-            Menu {
-                sizeOption(0, "Original size")
-                sizeOption(800, "800 px — blogs")
-                sizeOption(1080, "1080 px — Instagram")
-                sizeOption(1200, "1200 px — X / Facebook")
-                sizeOption(1600, "1600 px")
-                sizeOption(2048, "2048 px — high-res")
-            } label: {
-                Label(
-                    resizeMaxWidth == 0 ? "Original size" : "≤ \(resizeMaxWidth) px",
-                    systemImage: "arrow.down.right.and.arrow.up.left.rectangle"
-                )
-            }
-            .help("Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files.")
         }
         ToolbarItem(placement: .automatic) {
             Button {
