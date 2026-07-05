@@ -1,9 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @ObservedObject private var store = Store.shared
     @AppStorage("compressionQuality") private var qualityPercent = 80.0
     @State private var isDropTargeted = false
+    @State private var showingOpenPanel = false
 
     var body: some View {
         content
@@ -12,6 +14,26 @@ struct ContentView: View {
                 store.add(urls: urls, quality: qualityPercent / 100)
                 return true
             } isTargeted: { isDropTargeted = $0 }
+            .onPasteCommand(of: [.fileURL]) { providers in
+                let quality = qualityPercent / 100
+                for provider in providers {
+                    _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                        guard let url else { return }
+                        Task { @MainActor in
+                            Store.shared.add(urls: [url], quality: quality)
+                        }
+                    }
+                }
+            }
+            .fileImporter(
+                isPresented: $showingOpenPanel,
+                allowedContentTypes: [.image, .folder],
+                allowsMultipleSelection: true
+            ) { result in
+                if case .success(let urls) = result {
+                    store.add(urls: urls, quality: qualityPercent / 100)
+                }
+            }
             .overlay {
                 if isDropTargeted {
                     RoundedRectangle(cornerRadius: 10)
@@ -19,6 +41,8 @@ struct ContentView: View {
                         .padding(4)
                 }
             }
+            .overlay(alignment: .bottom) { toastOverlay }
+            .animation(.easeOut(duration: 0.2), value: store.toast)
             .toolbar { toolbarContent }
     }
 
@@ -37,6 +61,19 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder private var toastOverlay: some View {
+        if let toast = store.toast {
+            Text(toast)
+                .font(.callout)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.quaternary))
+                .padding(.bottom, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
     private var emptyHint: some View {
         VStack(spacing: 12) {
             Image(systemName: "photo.on.rectangle.angled")
@@ -44,9 +81,12 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             Text("Drop images here")
                 .font(.title2)
-            Text("JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC — compressed and saved in place")
+            Text("JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC — or press ⌘O / paste files with ⌘V")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+            Text("Files are compressed and saved in place — originals are only replaced when the result is smaller.")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -72,6 +112,15 @@ struct ContentView: View {
 
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .automatic) {
+            Button {
+                showingOpenPanel = true
+            } label: {
+                Label("Open", systemImage: "folder")
+            }
+            .keyboardShortcut("o", modifiers: .command)
+            .help("Choose images or folders (⌘O)")
+        }
+        ToolbarItem(placement: .automatic) {
             HStack(spacing: 8) {
                 Text("Quality")
                 Slider(value: $qualityPercent, in: 10...100, step: 5)
@@ -80,7 +129,7 @@ struct ContentView: View {
                     .monospacedDigit()
                     .frame(width: 40, alignment: .leading)
             }
-            .help("Lossy quality for JPEG/WebP/HEIC. Applies to newly dropped files.")
+            .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
         }
         ToolbarItem(placement: .automatic) {
             Button {
@@ -115,6 +164,23 @@ struct ItemRow: View {
         }
         .font(.body.monospacedDigit())
         .padding(.vertical, 3)
+        .contentShape(Rectangle())
+        .onTapGesture(count: 2) {
+            NSWorkspace.shared.open(item.url)
+        }
+        .contextMenu {
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([item.url])
+            }
+            Button("Copy Path") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(item.url.path, forType: .string)
+            }
+            Divider()
+            Button("Remove from List") {
+                Store.shared.removeItem(item.id)
+            }
+        }
     }
 
     private var thumbnail: some View {
