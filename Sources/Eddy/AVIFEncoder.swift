@@ -15,11 +15,11 @@ enum AVIFEncoder {
         defer { avifImageDestroy(avif) }
 
         // CICP for sRGB content: BT.709 primaries, sRGB transfer, BT.601 matrix.
-        avif.pointee.colorPrimaries = avifColorPrimaries(AVIF_COLOR_PRIMARIES_BT709.rawValue)
+        avif.pointee.colorPrimaries = avifColorPrimaries(AVIF_COLOR_PRIMARIES_BT709)
         avif.pointee.transferCharacteristics =
-            avifTransferCharacteristics(AVIF_TRANSFER_CHARACTERISTICS_SRGB.rawValue)
+            avifTransferCharacteristics(AVIF_TRANSFER_CHARACTERISTICS_SRGB)
         avif.pointee.matrixCoefficients =
-            avifMatrixCoefficients(AVIF_MATRIX_COEFFICIENTS_BT601.rawValue)
+            avifMatrixCoefficients(AVIF_MATRIX_COEFFICIENTS_BT601)
 
         var rgb = avifRGBImage()
         avifRGBImageSetDefaults(&rgb, avif)
