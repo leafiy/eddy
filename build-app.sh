@@ -18,22 +18,3 @@ printf 'APPL????' > "$APP/Contents/PkgInfo"
 codesign --force --sign - "$APP"
 
 echo "Done: $(pwd)/$APP"
-
-# The app compresses via the same engines ImageOptim bundles; check they exist.
-missing=""
-check() { # binary formula
-    if ! [ -x "/opt/homebrew/bin/$1" ] && ! [ -x "/usr/local/bin/$1" ] && ! command -v "$1" >/dev/null 2>&1; then
-        missing="$missing $2"
-    fi
-}
-check pngquant  pngquant
-check oxipng    oxipng
-check jpegoptim jpegoptim
-check gifsicle  gifsicle
-check avifenc   libavif
-
-if [ -n "$missing" ]; then
-    echo ""
-    echo "WARNING: optimizer engines missing. For real compression run:"
-    echo "    brew install$missing"
-fi
