@@ -134,17 +134,19 @@ struct ContentView: View {
             .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
         }
         ToolbarItem(placement: .automatic) {
-            Picker("Size", selection: $resizeMaxWidth) {
-                Text("Original size").tag(0)
-                Divider()
-                Text("800 px — blogs").tag(800)
-                Text("1080 px — Instagram").tag(1080)
-                Text("1200 px — X / Facebook").tag(1200)
-                Text("1600 px").tag(1600)
-                Text("2048 px — high-res").tag(2048)
+            Menu {
+                sizeOption(0, "Original size")
+                sizeOption(800, "800 px — blogs")
+                sizeOption(1080, "1080 px — Instagram")
+                sizeOption(1200, "1200 px — X / Facebook")
+                sizeOption(1600, "1600 px")
+                sizeOption(2048, "2048 px — high-res")
+            } label: {
+                Label(
+                    resizeMaxWidth == 0 ? "Original size" : "≤ \(resizeMaxWidth) px",
+                    systemImage: "arrow.down.right.and.arrow.up.left.rectangle"
+                )
             }
-            .pickerStyle(.menu)
-            .fixedSize()
             .help("Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files.")
         }
         ToolbarItem(placement: .automatic) {
@@ -157,6 +159,18 @@ struct ContentView: View {
             .help("Remove finished entries from the list")
         }
     }
+
+    private func sizeOption(_ width: Int, _ title: String) -> some View {
+        Button {
+            resizeMaxWidth = width
+        } label: {
+            if resizeMaxWidth == width {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
+            }
+        }
+    }
 }
 
 struct ItemRow: View {
@@ -165,10 +179,17 @@ struct ItemRow: View {
     var body: some View {
         HStack(spacing: 10) {
             thumbnail
-            Text(item.filename)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .help(item.url.path)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.filename)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let dimensions = item.dimensions {
+                    Text(dimensions)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .help(item.url.path)
             Spacer(minLength: 12)
             Text(Formatters.bytes(item.originalBytes))
                 .foregroundStyle(.secondary)

@@ -18,6 +18,8 @@ struct ImageItem: Identifiable {
     var originalBytes: Int
     var finalBytes: Int?
     var status: Status = .pending
+    /// "4032×3024 → 1080×810" once processed; proof of the resize setting.
+    var dimensions: String?
 
     var filename: String { url.lastPathComponent }
 
@@ -128,19 +130,27 @@ final class Store: ObservableObject {
 
     nonisolated private func processOne(_ item: ImageItem, quality: Double, maxWidth: Int) async {
         let thumbnail = Compressor.thumbnail(for: item.url)
+        let before = Compressor.pixelDimensions(of: item.url)
         await MainActor.run {
             self.update(item.id) {
                 $0.thumbnail = thumbnail
+                $0.dimensions = before.map { "\($0.width)×\($0.height)" }
                 $0.status = .processing
             }
         }
         do {
             let outcome = try Compressor.optimize(fileURL: item.url, quality: quality, maxWidth: maxWidth)
+            let after = Compressor.pixelDimensions(of: item.url)
             await MainActor.run {
                 self.update(item.id) {
                     $0.originalBytes = outcome.originalBytes
                     $0.finalBytes = outcome.finalBytes
                     $0.status = outcome.replaced ? .done : .unchanged
+                    if let before, let after {
+                        $0.dimensions = before == after
+                            ? "\(after.width)×\(after.height)"
+                            : "\(before.width)×\(before.height) → \(after.width)×\(after.height)"
+                    }
                 }
             }
         } catch {
