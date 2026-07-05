@@ -26,13 +26,12 @@ struct CompressionOutcome {
     let replaced: Bool
 }
 
-/// Per-format pipeline, same engines ImageOptim uses:
-///   PNG   pngquant (lossy quantization, quality slider) + oxipng/optipng (lossless)
-///   JPEG  jpegoptim (--max quality, strips all metadata, progressive)
-///   GIF   gifsicle -O3 (animations preserved)
-///   WebP  bundled libwebp (in-process, no external binary needed)
-///   AVIF  avifenc (via ImageIO decode)
-///   BMP/TIFF/HEIC and any missing tool: ImageIO re-encode fallback.
+/// Fully self-contained pipeline — every engine is compiled into the app:
+///   PNG   bundled libimagequant (pngquant's engine) + own indexed-PNG writer
+///   JPEG  ImageIO progressive re-encode AND lossless metadata strip; smaller wins
+///   WebP  bundled libwebp
+///   AVIF  bundled libavif + libaom
+///   GIF/BMP/TIFF/HEIC  ImageIO re-encode
 /// Every path strips EXIF/GPS/XMP/orientation metadata, never resizes pixels,
 /// and only overwrites the original when the result is smaller.
 enum Compressor {
@@ -79,115 +78,70 @@ enum Compressor {
         switch fileURL.pathExtension.lowercased() {
         case "jpg", "jpeg", "jpe": return try recompressJPEG(fileURL, quality, tempDir)
         case "png":                return try recompressPNG(fileURL, quality, tempDir)
-        case "gif":                return try recompressGIF(fileURL, tempDir)
         case "webp":               return try recompressWebP(fileURL, quality, tempDir)
         case "avif":               return try recompressAVIF(fileURL, quality, tempDir)
         default:                   return try imageIOReencode(fileURL, quality, tempDir)
         }
     }
 
-    private static func recompressJPEG(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
-        guard let jpegoptim = Tools.jpegoptim else {
-            return try imageIOReencode(fileURL, quality, tempDir)
-        }
-        let work = tempDir.appendingPathComponent("work.jpg")
-        if sourceOrientation(of: fileURL) != 1 {
-            // Bake the rotation into pixels first; ImageIO also strips metadata here.
-            _ = try imageIOReencode(fileURL, quality, tempDir, to: work)
-        } else {
-            try FileManager.default.copyItem(at: fileURL, to: work)
-        }
-        // Re-encodes only when the estimated quality exceeds --max; always strips
-        // EXIF/IPTC/XMP/ICC; progressive scan order like ImageOptim.
-        try Tools.run(jpegoptim, [
-            "--max=\(percent(quality))",
-            "--strip-all",
-            "--all-progressive",
-            "--quiet",
-            work.path,
-        ])
-        return work
-    }
-
+    /// pngquant-style lossy quantization; keep-if-smaller upstream guards the
+    /// rare case where an already tiny palette PNG doesn't benefit.
     private static func recompressPNG(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
-        let fm = FileManager.default
-        var current = tempDir.appendingPathComponent("work.png")
-        try fm.copyItem(at: fileURL, to: current)
-        var usedExternalTool = false
-
-        if let pngquant = Tools.pngquant {
-            let quantized = tempDir.appendingPathComponent("quant.png")
-            let qMax = percent(quality)
-            let qMin = max(0, qMax - 25)
-            // 98 = result would be larger, 99 = can't reach requested quality;
-            // both mean "keep the un-quantized file", not failure.
-            let status = try Tools.run(pngquant, [
-                "--force", "--skip-if-larger", "--strip", "--speed", "1",
-                "--quality", "\(qMin)-\(qMax)",
-                "--output", quantized.path,
-                "--", current.path,
-            ], allowedExitCodes: [0, 98, 99])
-            if status == 0 { current = quantized }
-            usedExternalTool = true
-        }
-
-        if let oxipng = Tools.oxipng {
-            try Tools.run(oxipng, ["-o", "3", "--strip", "all", "--quiet", current.path])
-            usedExternalTool = true
-        } else if let optipng = Tools.optipng {
-            try Tools.run(optipng, ["-o2", "-strip", "all", "-quiet", current.path])
-            usedExternalTool = true
-        }
-
-        return usedExternalTool ? current : try imageIOReencode(fileURL, quality, tempDir)
+        let frame = try decodedFrame(fileURL)
+        let encoded = try PNGCoder.quantizedPNG(from: frame, quality: quality)
+        let output = tempDir.appendingPathComponent("out.png")
+        try encoded.write(to: output)
+        return output
     }
 
-    private static func recompressGIF(_ fileURL: URL, _ tempDir: URL) throws -> URL {
-        guard let gifsicle = Tools.gifsicle else {
-            return try imageIOReencode(fileURL, 1.0, tempDir)
+    /// Two candidates, smaller wins:
+    /// 1. lossy: ImageIO progressive re-encode at the quality slider
+    ///    (also bakes orientation and strips metadata)
+    /// 2. lossless: byte-level metadata strip, image data untouched
+    ///    (only when there is no orientation to bake)
+    private static func recompressJPEG(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
+        var best: URL? = try? imageIOReencode(fileURL, quality, tempDir)
+
+        if sourceOrientation(of: fileURL) == 1,
+           let original = try? Data(contentsOf: fileURL),
+           let strippedData = JPEGStripper.stripped(original) {
+            let strippedURL = tempDir.appendingPathComponent("stripped.jpg")
+            if (try? strippedData.write(to: strippedURL)) != nil {
+                if let current = best {
+                    if fileSize(strippedURL) < fileSize(current) { best = strippedURL }
+                } else {
+                    best = strippedURL
+                }
+            }
         }
-        let work = tempDir.appendingPathComponent("work.gif")
-        try FileManager.default.copyItem(at: fileURL, to: work)
-        try Tools.run(gifsicle, ["-O3", "--no-comments", "--no-names", "-b", work.path])
-        return work
+
+        guard let best else { throw CompressionError.encodeFailed }
+        return best
     }
 
     private static func recompressWebP(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
         guard frameCount(of: fileURL) <= 1 else {
             throw CompressionError.encodingUnsupported("animated WebP is not supported")
         }
-        // Decode with orientation baked in, encode with the bundled libwebp;
-        // no metadata is carried over.
-        guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
-              let frame = renderedFrame(source: source, index: 0)
-        else { throw CompressionError.unknownFormat }
-        let encoded = try WebPEncoder.encode(frame, quality: quality)
+        let encoded = try WebPEncoder.encode(try decodedFrame(fileURL), quality: quality)
         let output = tempDir.appendingPathComponent("out.webp")
         try encoded.write(to: output)
         return output
     }
 
     private static func recompressAVIF(_ fileURL: URL, _ quality: Double, _ tempDir: URL) throws -> URL {
-        guard let avifenc = Tools.avifenc else {
-            throw CompressionError.encodingUnsupported("AVIF needs avifenc — run: brew install libavif")
-        }
-        let decoded = try imageIODecodeToPNG(fileURL, tempDir)
+        let encoded = try AVIFEncoder.encode(try decodedFrame(fileURL), quality: quality)
         let output = tempDir.appendingPathComponent("out.avif")
-        try Tools.run(avifenc, [
-            "-s", "6", "-q", "\(percent(quality))",
-            "--ignore-exif", "--ignore-xmp",
-            decoded.path, output.path,
-        ])
+        try encoded.write(to: output)
         return output
     }
 
-    // MARK: - ImageIO fallback encoder
+    // MARK: - ImageIO encoder (JPEG lossy candidate, GIF/BMP/TIFF/HEIC)
 
     private static func imageIOReencode(
         _ fileURL: URL,
         _ quality: Double,
-        _ tempDir: URL,
-        to explicitOutput: URL? = nil
+        _ tempDir: URL
     ) throws -> URL {
         guard let source = CGImageSourceCreateWithURL(
                   fileURL as CFURL,
@@ -196,18 +150,18 @@ enum Compressor {
         else { throw CompressionError.unknownFormat }
 
         let ext = fileURL.pathExtension.lowercased()
-        let output = explicitOutput ?? tempDir.appendingPathComponent("imageio.\(ext)")
+        let output = tempDir.appendingPathComponent("imageio.\(ext)")
         let frameCount = max(CGImageSourceGetCount(source), 1)
         let type = UTType(typeID as String)
-        let isLossy = type?.conforms(to: .jpeg) == true
-            || type?.conforms(to: .webP) == true
+        let isJPEG = type?.conforms(to: .jpeg) == true
+        let isLossy = isJPEG
             || type?.conforms(to: .heic) == true
             || type?.conforms(to: .heif) == true
         let isGIF = type?.conforms(to: .gif) == true
 
         guard let destination = CGImageDestinationCreateWithURL(
             output as CFURL, typeID, frameCount, nil)
-        else { throw CompressionError.encodingUnsupported(encoderHint(for: ext)) }
+        else { throw CompressionError.encodingUnsupported("no encoder available for .\(ext) on this macOS") }
 
         if isGIF,
            let containerProps = CGImageSourceCopyProperties(source, nil) as? [CFString: Any],
@@ -227,6 +181,11 @@ enum Compressor {
             if isLossy {
                 properties[kCGImageDestinationLossyCompressionQuality] = quality
             }
+            if isJPEG {
+                // Progressive scan order is typically a few percent smaller.
+                properties[kCGImagePropertyJFIFDictionary] =
+                    [kCGImagePropertyJFIFIsProgressive: true]
+            }
             if isGIF {
                 let delay = frameDelay(source: source, index: index)
                 properties[kCGImagePropertyGIFDictionary] = [
@@ -244,33 +203,16 @@ enum Compressor {
         return output
     }
 
-    private static func encoderHint(for ext: String) -> String {
-        switch ext {
-        case "avif": return "AVIF encoder missing — run: brew install libavif"
-        default:     return "no encoder available for .\(ext) on this macOS"
-        }
-    }
+    // MARK: - ImageIO decode helpers
 
-    /// Decodes frame 0 to a temp PNG with orientation baked in and zero metadata.
-    /// Used as the hand-off format for avifenc.
-    private static func imageIODecodeToPNG(_ fileURL: URL, _ tempDir: URL) throws -> URL {
+    /// Frame 0 at full resolution with EXIF orientation baked into the pixels.
+    private static func decodedFrame(_ fileURL: URL) throws -> CGImage {
         guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
               let frame = renderedFrame(source: source, index: 0)
         else { throw CompressionError.unknownFormat }
-        let output = tempDir.appendingPathComponent("decoded.png")
-        guard let destination = CGImageDestinationCreateWithURL(
-            output as CFURL, UTType.png.identifier as CFString, 1, nil)
-        else { throw CompressionError.encodeFailed }
-        CGImageDestinationAddImage(destination, frame, nil)
-        guard CGImageDestinationFinalize(destination) else {
-            throw CompressionError.encodeFailed
-        }
-        return output
+        return frame
     }
 
-    // MARK: - ImageIO helpers
-
-    /// Full-resolution frame with EXIF orientation baked into the pixels.
     private static func renderedFrame(source: CGImageSource, index: Int) -> CGImage? {
         let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
         let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
@@ -311,10 +253,6 @@ enum Compressor {
 
     private static func fileSize(_ url: URL) -> Int {
         (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-    }
-
-    private static func percent(_ quality: Double) -> Int {
-        max(1, min(100, Int((quality * 100).rounded())))
     }
 
     /// Small preview for the list row.
