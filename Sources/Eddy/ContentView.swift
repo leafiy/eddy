@@ -15,18 +15,6 @@ struct ContentView: View {
                 store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth)
                 return true
             } isTargeted: { isDropTargeted = $0 }
-            .onPasteCommand(of: [.fileURL]) { providers in
-                let quality = qualityPercent / 100
-                let maxWidth = resizeMaxWidth
-                for provider in providers {
-                    _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                        guard let url else { return }
-                        Task { @MainActor in
-                            Store.shared.add(urls: [url], quality: quality, maxWidth: maxWidth)
-                        }
-                    }
-                }
-            }
             .fileImporter(
                 isPresented: $showingOpenPanel,
                 allowedContentTypes: [.image, .folder],
@@ -120,7 +108,7 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
             Text("Drop images here")
                 .font(.title2)
-            Text("JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC — or press ⌘O / paste files with ⌘V")
+            Text("JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC — or press ⌘O / paste files or a copied image with ⌘V")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             Text("Files are compressed and saved in place — originals are only replaced when the result is smaller.")
