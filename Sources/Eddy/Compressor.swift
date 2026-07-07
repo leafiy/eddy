@@ -47,15 +47,6 @@ enum SaveFormat: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Compact label for the main-window strip.
-    var shortTitle: String {
-        switch self {
-        case .keep: return "Original"
-        case .png:  return "PNG"
-        case .jpeg: return "JPEG"
-        }
-    }
-
     /// File extensions already in this format — no conversion needed.
     fileprivate var extensions: Set<String>? {
         switch self {
