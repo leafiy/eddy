@@ -36,7 +36,7 @@ struct ContentView: View {
     private enum Metrics {
         /// Fixed slider width keeps the quality/size strip one compact line
         /// instead of the slider greedily spanning the whole window.
-        static let qualitySliderWidth: CGFloat = 160
+        static let qualitySliderWidth: CGFloat = 140
     }
 
     var body: some View {
@@ -108,6 +108,20 @@ struct ContentView: View {
                 .fixedSize()
             }
             .help("Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files.")
+
+            Divider()
+
+            settingControl("Format") {
+                Menu {
+                    ForEach(SaveFormat.allCases) { format in
+                        formatOption(format)
+                    }
+                } label: {
+                    Text(saveFormat.shortTitle)
+                }
+                .fixedSize()
+            }
+            .help("Save as this format — PNG/JPEG converts other formats in place. Applies to newly dropped files.")
             Spacer()
         }
         .font(.callout)
@@ -179,6 +193,18 @@ struct ContentView: View {
                 Label(option.title, systemImage: "checkmark")
             } else {
                 Text(option.title)
+            }
+        }
+    }
+
+    private func formatOption(_ format: SaveFormat) -> some View {
+        Button {
+            saveFormatRaw = format.rawValue
+        } label: {
+            if saveFormat == format {
+                Label(format.title, systemImage: "checkmark")
+            } else {
+                Text(format.title)
             }
         }
     }
