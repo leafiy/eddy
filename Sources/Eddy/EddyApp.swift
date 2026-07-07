@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import LeafiyUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -38,6 +39,48 @@ struct EddyApp: App {
                     Store.shared.pasteFromClipboard()
                 }
                 .keyboardShortcut("v", modifiers: .command)
+            }
+        }
+
+        Settings {
+            SettingsScaffold {
+                EddyGeneralSettingsPane()
+                AboutPane(
+                    tagline: "Drag-and-drop image compression — files are optimized in place.",
+                    copyright: "© 2026 Leafiy"
+                )
+            }
+        }
+    }
+}
+
+private struct EddyGeneralSettingsPane: View {
+    @AppStorage("compressionQuality") private var qualityPercent = 80.0
+    @AppStorage("resizeMaxWidth") private var resizeMaxWidth = 0
+
+    var body: some View {
+        SettingsPane("General", systemImage: "gearshape") {
+            Section("Compression") {
+                LabeledContent("Default quality") {
+                    HStack(spacing: LeafiyDesign.Spacing.s) {
+                        Slider(value: $qualityPercent, in: 10...100, step: 5)
+                        Text("\(Int(qualityPercent))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Section("Resize") {
+                Picker("Max width", selection: $resizeMaxWidth) {
+                    ForEach(ResizeMaxWidthOption.all) { option in
+                        Text(option.title).tag(option.width)
+                    }
+                }
+
+                Text("Images are optimized in place. These defaults are used for new drops.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }

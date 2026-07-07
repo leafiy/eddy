@@ -1,5 +1,27 @@
+import AppKit
 import SwiftUI
+import LeafiyUI
 import UniformTypeIdentifiers
+
+struct ResizeMaxWidthOption: Identifiable {
+    let width: Int
+    let title: String
+
+    var id: Int { width }
+
+    static let all = [
+        ResizeMaxWidthOption(width: 0, title: "Original size"),
+        ResizeMaxWidthOption(width: 800, title: "800 px — blogs"),
+        ResizeMaxWidthOption(width: 1080, title: "1080 px — Instagram"),
+        ResizeMaxWidthOption(width: 1200, title: "1200 px — X / Facebook"),
+        ResizeMaxWidthOption(width: 1600, title: "1600 px"),
+        ResizeMaxWidthOption(width: 2048, title: "2048 px — high-res")
+    ]
+
+    static func title(for width: Int) -> String {
+        all.first { $0.width == width }?.title ?? "≤ \(width) px"
+    }
+}
 
 struct ContentView: View {
     @ObservedObject private var store = Store.shared
@@ -10,7 +32,7 @@ struct ContentView: View {
 
     var body: some View {
         content
-            .frame(minWidth: 640, minHeight: 400)
+            .frame(minWidth: LeafiyDesign.Size.mainWindowMinWidth, minHeight: LeafiyDesign.Size.mainWindowMinHeight)
             .dropDestination(for: URL.self) { urls, _ in
                 store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth)
                 return true
@@ -26,19 +48,20 @@ struct ContentView: View {
             }
             .overlay {
                 if isDropTargeted {
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.accentColor, lineWidth: 3)
-                        .padding(4)
+                    RoundedRectangle(cornerRadius: LeafiyDesign.Radius.card)
+                        .strokeBorder(Color.accentColor, lineWidth: LeafiyDesign.Spacing.xxs)
+                        .padding(LeafiyDesign.Spacing.xs)
                 }
             }
-            .overlay(alignment: .bottom) { toastOverlay }
-            .animation(.easeOut(duration: 0.2), value: store.toast)
+            .leafiyToast(store.toast)
             .toolbar { toolbarContent }
     }
 
     @ViewBuilder private var content: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: .zero) {
             settingsBar
+                .padding(.horizontal, LeafiyDesign.Spacing.m)
+                .padding(.vertical, LeafiyDesign.Spacing.s)
             Divider()
             if store.items.isEmpty {
                 emptyHint
@@ -56,29 +79,23 @@ struct ContentView: View {
     /// Lives in the window content, not the toolbar: macOS toolbar items do
     /// not reliably re-render on state changes, which froze these controls.
     private var settingsBar: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 16) {
+        ControlBar {
             settingControl("Quality") {
                 Slider(value: $qualityPercent, in: 10...100, step: 5)
-                    .frame(width: 140)
                 Text("\(Int(qualityPercent))%")
                     .monospacedDigit()
-                    .frame(width: 40, alignment: .leading)
             }
             .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
 
             Divider()
-                .frame(height: 18)
 
             settingControl("Size") {
                 Menu {
-                    sizeOption(0, "Original size")
-                    sizeOption(800, "800 px — blogs")
-                    sizeOption(1080, "1080 px — Instagram")
-                    sizeOption(1200, "1200 px — X / Facebook")
-                    sizeOption(1600, "1600 px")
-                    sizeOption(2048, "2048 px — high-res")
+                    ForEach(ResizeMaxWidthOption.all) { option in
+                        sizeOption(option)
+                    }
                 } label: {
-                    Text(resizeMaxWidth == 0 ? "Original size" : "≤ \(resizeMaxWidth) px")
+                    Text(ResizeMaxWidthOption.title(for: resizeMaxWidth))
                 }
                 .fixedSize()
             }
@@ -86,50 +103,25 @@ struct ContentView: View {
             Spacer()
         }
         .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     private func settingControl<Content: View>(
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: LeafiyDesign.Spacing.s) {
             Text(title)
                 .foregroundStyle(.secondary)
-                .frame(width: 52, alignment: .trailing)
             content()
         }
     }
 
-    @ViewBuilder private var toastOverlay: some View {
-        if let toast = store.toast {
-            Text(toast)
-                .font(.callout)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(.regularMaterial, in: Capsule())
-                .overlay(Capsule().strokeBorder(.quaternary))
-                .padding(.bottom, 16)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
-
     private var emptyHint: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "photo.on.rectangle.angled")
-                .font(.system(size: 52))
-                .foregroundStyle(.secondary)
-            Text("Drop images here")
-                .font(.title2)
-            Text("JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC — or press ⌘O / paste files or a copied image with ⌘V")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Text("Files are compressed and saved in place — originals are only replaced when the result is smaller.")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyStateView(
+            systemImage: "photo.on.rectangle.angled",
+            title: "Drop images here",
+            subtitle: "JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC — or press ⌘O / paste files or a copied image with ⌘V\nFiles are compressed and saved in place — originals are only replaced when the result is smaller."
+        )
     }
 
     private var footer: some View {
@@ -137,18 +129,16 @@ struct ContentView: View {
         let original = finished.reduce(0) { $0 + $1.originalBytes }
         let final = finished.reduce(0) { $0 + ($1.finalBytes ?? 0) }
         let saved = original - final
-        return HStack {
+        return FooterBar {
             Text("\(store.items.count) file\(store.items.count == 1 ? "" : "s")")
-                .foregroundStyle(.secondary)
+                .monospacedDigit()
             Spacer()
             if original > 0 {
                 Text("Saved \(Formatters.bytes(saved)) (\(Formatters.percent(Double(saved) / Double(original))))")
-                    .foregroundStyle(saved > 0 ? Color.green : Color.secondary)
+                    .fontWeight(saved > 0 ? .semibold : .regular)
+                    .monospacedDigit()
             }
         }
-        .font(.callout.monospacedDigit())
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
@@ -172,14 +162,14 @@ struct ContentView: View {
         }
     }
 
-    private func sizeOption(_ width: Int, _ title: String) -> some View {
+    private func sizeOption(_ option: ResizeMaxWidthOption) -> some View {
         Button {
-            resizeMaxWidth = width
+            resizeMaxWidth = option.width
         } label: {
-            if resizeMaxWidth == width {
-                Label(title, systemImage: "checkmark")
+            if resizeMaxWidth == option.width {
+                Label(option.title, systemImage: "checkmark")
             } else {
-                Text(title)
+                Text(option.title)
             }
         }
     }
@@ -189,9 +179,9 @@ struct ItemRow: View {
     let item: ImageItem
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: LeafiyDesign.Spacing.m) {
             thumbnail
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: LeafiyDesign.Spacing.xxs) {
                 Text(item.filename)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -202,17 +192,14 @@ struct ItemRow: View {
                 }
             }
             .help(item.url.path)
-            Spacer(minLength: 12)
+            Spacer(minLength: LeafiyDesign.Spacing.m)
             Text(Formatters.bytes(item.originalBytes))
                 .foregroundStyle(.secondary)
-                .frame(width: 78, alignment: .trailing)
             statusColumn
-                .frame(width: 86, alignment: .trailing)
             Text(item.finalBytes.map(Formatters.bytes) ?? "—")
-                .frame(width: 78, alignment: .trailing)
         }
         .font(.body.monospacedDigit())
-        .padding(.vertical, 3)
+        .padding(.vertical, LeafiyDesign.Spacing.xs)
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
             NSWorkspace.shared.open(item.url)
@@ -234,10 +221,13 @@ struct ItemRow: View {
 
     private var thumbnail: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: LeafiyDesign.Radius.control)
                 .fill(.quaternary)
             if let cgImage = item.thumbnail {
-                Image(decorative: cgImage, scale: 2)
+                Image(nsImage: NSImage(
+                    cgImage: cgImage,
+                    size: NSSize(width: LeafiyDesign.Size.rowIcon, height: LeafiyDesign.Size.rowIcon)
+                ))
                     .resizable()
                     .scaledToFill()
             } else {
@@ -245,8 +235,8 @@ struct ItemRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .frame(width: 36, height: 36)
-        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .frame(width: LeafiyDesign.Size.rowIcon, height: LeafiyDesign.Size.rowIcon)
+        .clipShape(RoundedRectangle(cornerRadius: LeafiyDesign.Radius.control))
     }
 
     @ViewBuilder private var statusColumn: some View {
@@ -260,7 +250,7 @@ struct ItemRow: View {
         case .done:
             Text("−" + Formatters.percent(item.savedFraction ?? 0))
                 .fontWeight(.semibold)
-                .foregroundStyle(.green)
+                .foregroundStyle(.primary)
         case .unchanged:
             Text("0%")
                 .foregroundStyle(.secondary)
