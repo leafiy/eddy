@@ -11,6 +11,17 @@
 set -eu
 cd "$(dirname "$0")"
 
+# All Leafiy apps build against the sibling leafiy-ui checkout; a stale one
+# causes confusing "cannot find X in scope" compile errors.
+UI_DIR="../leafiy-ui"
+[ -d "$UI_DIR" ] || { echo "error: $UI_DIR not found — clone leafiy-ui next to this repo" >&2; exit 1; }
+if git -C "$UI_DIR" fetch --quiet origin main 2>/dev/null; then
+    if ! git -C "$UI_DIR" merge-base --is-ancestor "$(git -C "$UI_DIR" rev-parse origin/main)" "$(git -C "$UI_DIR" rev-parse HEAD)"; then
+        echo "error: $UI_DIR is behind origin/main — run: git -C $UI_DIR pull" >&2
+        exit 1
+    fi
+fi
+
 command -v swift >/dev/null 2>&1 || { echo "error: needs macOS with Xcode command line tools"; exit 1; }
 [ -n "${GITEA_TOKEN:-}" ] || { echo "error: set GITEA_TOKEN (Gitea -> Settings -> Applications -> Generate Token)"; exit 1; }
 
