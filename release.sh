@@ -36,6 +36,12 @@ if [ -z "$SIGN_IDENTITY" ]; then
         | head -n 1)
 fi
 if [ -z "$SIGN_IDENTITY" ]; then
+    if [ -n "$NOTARY_PROFILE" ]; then
+        echo "error: NOTARY_PROFILE is set but no 'Developer ID Application' identity for team $TEAM_ID is in the keychain"
+        echo "hint: the .cer alone is not enough - import it together with its private key (.p12), then verify:"
+        echo "hint:   security find-identity -v -p codesigning"
+        exit 1
+    fi
     SIGN_IDENTITY="-"
     echo "warning: Developer ID Application certificate for team $TEAM_ID not found; DMGs will not be notarized for public distribution"
 elif [ -z "$NOTARY_PROFILE" ]; then
