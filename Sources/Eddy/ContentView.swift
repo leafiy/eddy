@@ -113,6 +113,10 @@ struct ContentView: View {
         }
         .font(.callout)
         .controlSize(.small)
+        // A Divider inside an HStack expands to any proposed height, which
+        // made the whole strip vertically greedy — the VStack then gave it
+        // half the window. Pin the strip to its one-line ideal height.
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     private func settingControl<Content: View>(
