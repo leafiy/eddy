@@ -27,9 +27,10 @@ struct EddyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup("eddy") {
+        WindowGroup("eddy", id: "main") {
             ContentView()
         }
+        .defaultSize(width: 640, height: 420)
         .windowResizability(.contentMinSize)
         .commands {
             // Menu command instead of onPasteCommand: works regardless of
@@ -41,6 +42,13 @@ struct EddyApp: App {
                 .keyboardShortcut("v", modifiers: .command)
             }
         }
+
+        MenuBarExtra {
+            EddyMenuContent()
+        } label: {
+            EddyMenuBarIcon()
+        }
+        .menuBarExtraStyle(.menu)
 
         Settings {
             SettingsScaffold {
@@ -54,12 +62,51 @@ struct EddyApp: App {
     }
 }
 
+private struct EddyMenuBarIcon: View {
+    /// Sized once: the status bar draws the NSImage's own point size;
+    /// SwiftUI frames on MenuBarExtra labels don't reliably constrain it.
+    /// The application icon comes from the bundle's icns at launch.
+    private static let icon = NSApplication.shared.applicationIconImage?.leafiyMenuBarSized()
+
+    var body: some View {
+        Group {
+            if let icon = Self.icon {
+                Image(nsImage: icon)
+            } else {
+                Image(systemName: "photo.on.rectangle.angled")
+            }
+        }
+        .accessibilityLabel("eddy")
+    }
+}
+
+private struct EddyMenuContent: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Open eddy") {
+            openWindow(id: "main")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        Button("Paste Images") {
+            Store.shared.pasteFromClipboard()
+        }
+        Divider()
+        SettingsLink {
+            Text("Settings…")
+        }
+        Button("Quit eddy") {
+            NSApp.terminate(nil)
+        }
+    }
+}
+
 private struct EddyGeneralSettingsPane: View {
     @AppStorage("compressionQuality") private var qualityPercent = 80.0
     @AppStorage("resizeMaxWidth") private var resizeMaxWidth = 0
 
     var body: some View {
-        SettingsPane("General", systemImage: "gearshape") {
+        SettingsPane("General", systemImage: "gearshape", height: 300) {
             Section("Compression") {
                 LabeledContent("Default quality") {
                     HStack(spacing: LeafiyDesign.Spacing.s) {

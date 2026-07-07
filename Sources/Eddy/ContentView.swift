@@ -62,7 +62,6 @@ struct ContentView: View {
             settingsBar
                 .padding(.horizontal, LeafiyDesign.Spacing.m)
                 .padding(.vertical, LeafiyDesign.Spacing.s)
-            Divider()
             if store.items.isEmpty {
                 emptyHint
             } else {
@@ -70,7 +69,6 @@ struct ContentView: View {
                     ItemRow(item: item)
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: true))
-                Divider()
                 footer
             }
         }
@@ -120,7 +118,7 @@ struct ContentView: View {
         EmptyStateView(
             systemImage: "photo.on.rectangle.angled",
             title: "Drop images here",
-            subtitle: "JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC — or press ⌘O / paste files or a copied image with ⌘V\nFiles are compressed and saved in place — originals are only replaced when the result is smaller."
+            subtitle: "JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC\n⌘O to open · ⌘V to paste · files are optimized in place, replaced only when smaller"
         )
     }
 
