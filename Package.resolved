@@ -1,4 +1,5 @@
 {
+  "originHash" : "a811095d3d749d5d08f423b4cc4ef00f07b1eae6182d7d6c59b2f06bdfdf8d64",
   "pins" : [
     {
       "identity" : "libaom-xcode",
@@ -37,5 +38,5 @@
       }
     }
   ],
-  "version" : 2
+  "version" : 3
 }
