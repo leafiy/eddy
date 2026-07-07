@@ -13,7 +13,7 @@ struct ImageItem: Identifiable {
     }
 
     let id = UUID()
-    let url: URL
+    var url: URL
     var thumbnail: CGImage?
     var originalBytes: Int
     var finalBytes: Int?
@@ -69,12 +69,13 @@ final class Store: ObservableObject {
         let pasteboard = NSPasteboard.general
         let quality = (UserDefaults.standard.object(forKey: "compressionQuality") as? Double ?? 80) / 100
         let maxWidth = UserDefaults.standard.integer(forKey: "resizeMaxWidth")
+        let format = SaveFormat(rawValue: UserDefaults.standard.string(forKey: "defaultSaveFormat") ?? "") ?? .keep
 
         if let urls = pasteboard.readObjects(
                forClasses: [NSURL.self],
                options: [.urlReadingFileURLsOnly: true]
            ) as? [URL], !urls.isEmpty {
-            add(urls: urls, quality: quality, maxWidth: maxWidth)
+            add(urls: urls, quality: quality, maxWidth: maxWidth, format: format)
             return
         }
 
@@ -82,7 +83,7 @@ final class Store: ObservableObject {
             do {
                 let url = try Self.savePastedImage(pngData)
                 showToast("Pasted image saved to \((url.path as NSString).abbreviatingWithTildeInPath)", seconds: 5)
-                add(urls: [url], quality: quality, maxWidth: maxWidth)
+                add(urls: [url], quality: quality, maxWidth: maxWidth, format: format)
             } catch {
                 showToast("Could not save the pasted image")
             }
@@ -121,7 +122,7 @@ final class Store: ObservableObject {
         return url
     }
 
-    func add(urls: [URL], quality: Double, maxWidth: Int = 0) {
+    func add(urls: [URL], quality: Double, maxWidth: Int = 0, format: SaveFormat) {
         var files: [URL] = []
         var skipped = 0
         let fm = FileManager.default
@@ -164,12 +165,12 @@ final class Store: ObservableObject {
         }
         items.append(contentsOf: newItems)
         updateDockBadge()
-        process(batch: newItems, quality: quality, maxWidth: maxWidth)
+        process(batch: newItems, quality: quality, maxWidth: maxWidth, format: format)
     }
 
     // MARK: - Processing
 
-    private func process(batch: [ImageItem], quality: Double, maxWidth: Int) {
+    private func process(batch: [ImageItem], quality: Double, maxWidth: Int, format: SaveFormat) {
         Task.detached(priority: .userInitiated) { [weak self] in
             guard let self else { return }
             await withTaskGroup(of: Void.self) { group in
@@ -178,18 +179,18 @@ final class Store: ObservableObject {
                 while next < min(width, batch.count) {
                     let item = batch[next]
                     next += 1
-                    group.addTask { await self.processOne(item, quality: quality, maxWidth: maxWidth) }
+                    group.addTask { await self.processOne(item, quality: quality, maxWidth: maxWidth, format: format) }
                 }
                 for await _ in group where next < batch.count {
                     let item = batch[next]
                     next += 1
-                    group.addTask { await self.processOne(item, quality: quality, maxWidth: maxWidth) }
+                    group.addTask { await self.processOne(item, quality: quality, maxWidth: maxWidth, format: format) }
                 }
             }
         }
     }
 
-    nonisolated private func processOne(_ item: ImageItem, quality: Double, maxWidth: Int) async {
+    nonisolated private func processOne(_ item: ImageItem, quality: Double, maxWidth: Int, format: SaveFormat) async {
         let thumbnail = Compressor.thumbnail(for: item.url)
         let before = Compressor.pixelDimensions(of: item.url)
         await MainActor.run {
@@ -200,10 +201,11 @@ final class Store: ObservableObject {
             }
         }
         do {
-            let outcome = try Compressor.optimize(fileURL: item.url, quality: quality, maxWidth: maxWidth)
-            let after = Compressor.pixelDimensions(of: item.url)
+            let outcome = try Compressor.optimize(fileURL: item.url, quality: quality, maxWidth: maxWidth, format: format)
+            let after = Compressor.pixelDimensions(of: outcome.outputURL)
             await MainActor.run {
                 self.update(item.id) {
+                    $0.url = outcome.outputURL
                     $0.originalBytes = outcome.originalBytes
                     $0.finalBytes = outcome.finalBytes
                     $0.status = outcome.replaced ? .done : .unchanged

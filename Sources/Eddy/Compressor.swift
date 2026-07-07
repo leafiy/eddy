@@ -24,6 +24,37 @@ struct CompressionOutcome {
     let finalBytes: Int
     /// false when the re-encoded file was not smaller and the original was kept.
     let replaced: Bool
+    /// Where the result lives — differs from the input only when a format
+    /// conversion changed the file's extension.
+    let outputURL: URL
+}
+
+/// Output format for processed files. `keep` re-encodes in the original
+/// format; `png`/`jpeg` convert files of other formats, replacing the
+/// original next to where it lived.
+enum SaveFormat: String, CaseIterable, Identifiable {
+    case keep
+    case png
+    case jpeg
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .keep: return "Keep original format"
+        case .png:  return "PNG"
+        case .jpeg: return "JPEG"
+        }
+    }
+
+    /// File extensions already in this format — no conversion needed.
+    fileprivate var extensions: Set<String>? {
+        switch self {
+        case .keep: return nil
+        case .png:  return ["png"]
+        case .jpeg: return ["jpg", "jpeg", "jpe"]
+        }
+    }
 }
 
 /// Fully self-contained pipeline — every engine is compiled into the app:
@@ -42,7 +73,11 @@ enum Compressor {
         "tif", "tiff", "heic", "heif",
     ]
 
-    static func optimize(fileURL: URL, quality: Double, maxWidth: Int = 0) throws -> CompressionOutcome {
+    static func optimize(fileURL: URL, quality: Double, maxWidth: Int = 0, format: SaveFormat) throws -> CompressionOutcome {
+        if let targetExtensions = format.extensions,
+           !targetExtensions.contains(fileURL.pathExtension.lowercased()) {
+            return try convert(fileURL: fileURL, to: format, quality: quality, maxWidth: maxWidth)
+        }
         guard let originalSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
               originalSize > 0
         else { throw CompressionError.unreadableFile }
@@ -57,7 +92,7 @@ enum Compressor {
             fileURL: fileURL, quality: quality, maxWidth: maxWidth, tempDir: tempDir)
         let newSize = fileSize(candidate)
         guard newSize > 0, newSize < originalSize else {
-            return CompressionOutcome(originalBytes: originalSize, finalBytes: originalSize, replaced: false)
+            return CompressionOutcome(originalBytes: originalSize, finalBytes: originalSize, replaced: false, outputURL: fileURL)
         }
 
         // Stage next to the original so the final swap is atomic on the same volume.
@@ -71,7 +106,101 @@ enum Compressor {
             try? fm.removeItem(at: staging)
             throw error
         }
-        return CompressionOutcome(originalBytes: originalSize, finalBytes: newSize, replaced: true)
+        return CompressionOutcome(originalBytes: originalSize, finalBytes: newSize, replaced: true, outputURL: fileURL)
+    }
+
+    // MARK: - Format conversion
+
+    /// Converts to `format` next to the original and removes the original —
+    /// the conversion counterpart of optimize()'s in-place replace. Unlike
+    /// optimize(), sizes are not compared: an explicit format choice wins
+    /// even when the result is larger (e.g. JPEG → PNG). A name collision
+    /// gets a "-2" style suffix instead of clobbering an unrelated file.
+    private static func convert(fileURL: URL, to format: SaveFormat, quality: Double, maxWidth: Int) throws -> CompressionOutcome {
+        guard let originalSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              originalSize > 0
+        else { throw CompressionError.unreadableFile }
+
+        let frame = try decodedFrame(fileURL, maxWidth: maxWidth)
+        let data: Data
+        let ext: String
+        switch format {
+        case .keep:
+            throw CompressionError.encodeFailed // unreachable: dispatch handles .keep
+        case .png:
+            data = try PNGCoder.quantizedPNG(from: frame, quality: quality)
+            ext = "png"
+        case .jpeg:
+            data = try jpegData(from: frame, quality: quality)
+            ext = "jpg"
+        }
+
+        let fm = FileManager.default
+        let directory = fileURL.deletingLastPathComponent()
+        let base = fileURL.deletingPathExtension().lastPathComponent
+        var counter = 1
+        while true {
+            let name = counter == 1 ? "\(base).\(ext)" : "\(base)-\(counter).\(ext)"
+            counter += 1
+            let destination = directory.appendingPathComponent(name)
+            do {
+                // withoutOverwriting makes concurrent batch items racing for
+                // the same name fail over to the next suffix, not clobber.
+                try data.write(to: destination, options: .withoutOverwriting)
+            } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                continue
+            }
+            try fm.removeItem(at: fileURL)
+            return CompressionOutcome(
+                originalBytes: originalSize,
+                finalBytes: data.count,
+                replaced: true,
+                outputURL: destination
+            )
+        }
+    }
+
+    /// JPEG frame encode for conversions; progressive like the JPEG
+    /// re-encode path.
+    private static func jpegData(from image: CGImage, quality: Double) throws -> Data {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            data, UTType.jpeg.identifier as CFString, 1, nil)
+        else { throw CompressionError.encodingUnsupported("no JPEG encoder available on this macOS") }
+        let properties: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: quality,
+            kCGImagePropertyJFIFDictionary: [kCGImagePropertyJFIFIsProgressive: true],
+        ]
+        CGImageDestinationAddImage(destination, flattenedOpaque(image), properties as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else { throw CompressionError.encodeFailed }
+        return data as Data
+    }
+
+    /// JPEG can't store alpha; transparent sources (typically PNGs) are
+    /// flattened onto white instead of whatever the encoder would do.
+    private static func flattenedOpaque(_ image: CGImage) -> CGImage {
+        switch image.alphaInfo {
+        case .none, .noneSkipFirst, .noneSkipLast:
+            return image
+        default:
+            break
+        }
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(
+                  data: nil,
+                  width: image.width,
+                  height: image.height,
+                  bitsPerComponent: 8,
+                  bytesPerRow: image.width * 4,
+                  space: colorSpace,
+                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+              )
+        else { return image }
+        let bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(bounds)
+        context.draw(image, in: bounds)
+        return context.makeImage() ?? image
     }
 
     // MARK: - Format dispatch

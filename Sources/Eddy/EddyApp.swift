@@ -8,16 +8,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Keep running after the last window closes — like fifi, the menu-bar
+    /// item stays available (reopen via the icon, the Dock, or ⌘O drops).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
     }
 
     /// Files dropped on the Dock icon or opened via "Open With".
     func application(_ application: NSApplication, open urls: [URL]) {
         let percent = UserDefaults.standard.object(forKey: "compressionQuality") as? Double ?? 80
         let maxWidth = UserDefaults.standard.integer(forKey: "resizeMaxWidth")
+        let format = SaveFormat(rawValue: UserDefaults.standard.string(forKey: "defaultSaveFormat") ?? "") ?? .keep
         Task { @MainActor in
-            Store.shared.add(urls: urls, quality: percent / 100, maxWidth: maxWidth)
+            Store.shared.add(urls: urls, quality: percent / 100, maxWidth: maxWidth, format: format)
         }
     }
 }
@@ -92,8 +95,8 @@ private struct EddyMenuContent: View {
             Store.shared.pasteFromClipboard()
         }
         Divider()
-        SettingsLink {
-            Text("Settings…")
+        Button("Settings…") {
+            openSettingsWindow()
         }
         Button("Quit eddy") {
             NSApp.terminate(nil)
@@ -101,12 +104,31 @@ private struct EddyMenuContent: View {
     }
 }
 
+/// Opens the SwiftUI Settings scene from the menu-bar menu by performing the
+/// app-menu "Settings…" item SwiftUI maintains (equivalent to ⌘,); falls back
+/// to the legacy responder-chain selector. Same approach as fifi — a plain
+/// `SettingsLink` doesn't activate the app from a menu-bar click, so the
+/// window opened behind whatever app was frontmost.
+@MainActor
+private func openSettingsWindow() {
+    NSApp.activate(ignoringOtherApps: true)
+    if let appMenu = NSApp.mainMenu?.items.first?.submenu,
+       let index = appMenu.items.firstIndex(where: {
+           $0.keyEquivalent == "," && $0.keyEquivalentModifierMask == .command
+       }) {
+        appMenu.performActionForItem(at: index)
+        return
+    }
+    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+}
+
 private struct EddyGeneralSettingsPane: View {
     @AppStorage("compressionQuality") private var qualityPercent = 80.0
     @AppStorage("resizeMaxWidth") private var resizeMaxWidth = 0
+    @AppStorage("defaultSaveFormat") private var saveFormatRaw = SaveFormat.keep.rawValue
 
     var body: some View {
-        SettingsPane("General", systemImage: "gearshape", height: 300) {
+        SettingsPane("General", systemImage: "gearshape", height: 340) {
             Section("Compression") {
                 LabeledContent("Default quality") {
                     HStack(spacing: LeafiyDesign.Spacing.s) {
@@ -114,6 +136,11 @@ private struct EddyGeneralSettingsPane: View {
                         Text("\(Int(qualityPercent))%")
                             .monospacedDigit()
                             .foregroundStyle(.secondary)
+                    }
+                }
+                Picker("Save format", selection: $saveFormatRaw) {
+                    ForEach(SaveFormat.allCases) { format in
+                        Text(format.title).tag(format.rawValue)
                     }
                 }
             }
@@ -125,7 +152,7 @@ private struct EddyGeneralSettingsPane: View {
                     }
                 }
 
-                Text("Images are optimized in place. These defaults are used for new drops.")
+                Text("Images are optimized in place — choosing PNG or JPEG converts other formats and replaces the original file. These defaults are used for new drops.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

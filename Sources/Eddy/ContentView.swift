@@ -27,14 +27,23 @@ struct ContentView: View {
     @ObservedObject private var store = Store.shared
     @AppStorage("compressionQuality") private var qualityPercent = 80.0
     @AppStorage("resizeMaxWidth") private var resizeMaxWidth = 0
+    @AppStorage("defaultSaveFormat") private var saveFormatRaw = SaveFormat.keep.rawValue
     @State private var isDropTargeted = false
     @State private var showingOpenPanel = false
+
+    private var saveFormat: SaveFormat { SaveFormat(rawValue: saveFormatRaw) ?? .keep }
+
+    private enum Metrics {
+        /// Fixed slider width keeps the quality/size strip one compact line
+        /// instead of the slider greedily spanning the whole window.
+        static let qualitySliderWidth: CGFloat = 160
+    }
 
     var body: some View {
         content
             .frame(minWidth: LeafiyDesign.Size.mainWindowMinWidth, minHeight: LeafiyDesign.Size.mainWindowMinHeight)
             .dropDestination(for: URL.self) { urls, _ in
-                store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth)
+                store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth, format: saveFormat)
                 return true
             } isTargeted: { isDropTargeted = $0 }
             .fileImporter(
@@ -43,7 +52,7 @@ struct ContentView: View {
                 allowsMultipleSelection: true
             ) { result in
                 if case .success(let urls) = result {
-                    store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth)
+                    store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth, format: saveFormat)
                 }
             }
             .overlay {
@@ -80,6 +89,7 @@ struct ContentView: View {
         ControlBar {
             settingControl("Quality") {
                 Slider(value: $qualityPercent, in: 10...100, step: 5)
+                    .frame(width: Metrics.qualitySliderWidth)
                 Text("\(Int(qualityPercent))%")
                     .monospacedDigit()
             }
@@ -101,6 +111,7 @@ struct ContentView: View {
             Spacer()
         }
         .font(.callout)
+        .controlSize(.small)
     }
 
     private func settingControl<Content: View>(
@@ -246,7 +257,12 @@ struct ItemRow: View {
             ProgressView()
                 .controlSize(.small)
         case .done:
-            Text("−" + Formatters.percent(item.savedFraction ?? 0))
+            // Format conversion may legitimately grow the file (JPEG → PNG);
+            // show "+N%" instead of a garbled double minus.
+            let fraction = item.savedFraction ?? 0
+            Text(fraction < 0
+                ? "+" + Formatters.percent(-fraction)
+                : "−" + Formatters.percent(fraction))
                 .fontWeight(.semibold)
                 .foregroundStyle(.primary)
         case .unchanged:
