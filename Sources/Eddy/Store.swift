@@ -82,15 +82,15 @@ final class Store: ObservableObject {
         if let pngData = Self.imageData(from: pasteboard) {
             do {
                 let url = try Self.savePastedImage(pngData)
-                showToast("Pasted image saved to \((url.path as NSString).abbreviatingWithTildeInPath)", seconds: 5)
+                showToast(String(format: L("Pasted image saved to %@"), (url.path as NSString).abbreviatingWithTildeInPath), seconds: 5)
                 add(urls: [url], quality: quality, maxWidth: maxWidth, format: format)
             } catch {
-                showToast("Could not save the pasted image")
+                showToast(L("Could not save the pasted image"))
             }
             return
         }
 
-        showToast("No image in the clipboard")
+        showToast(L("No image in the clipboard"))
     }
 
     private static func imageData(from pasteboard: NSPasteboard) -> Data? {
@@ -149,10 +149,17 @@ final class Store: ObservableObject {
         }
 
         if skipped > 0 {
-            let plural = skipped == 1 ? "" : "s"
-            showToast(files.isEmpty
-                ? "No supported images — skipped \(skipped) file\(plural)"
-                : "Skipped \(skipped) unsupported file\(plural)")
+            let message: String
+            if files.isEmpty {
+                message = skipped == 1
+                    ? String(format: L("No supported images — skipped %d file"), skipped)
+                    : String(format: L("No supported images — skipped %d files"), skipped)
+            } else {
+                message = skipped == 1
+                    ? String(format: L("Skipped %d unsupported file"), skipped)
+                    : String(format: L("Skipped %d unsupported files"), skipped)
+            }
+            showToast(message)
         }
         guard !files.isEmpty else { return }
 
@@ -246,8 +253,8 @@ final class Store: ObservableObject {
         let finished = items.filter { $0.finalBytes != nil }
         let saved = finished.reduce(0) { $0 + ($1.originalBytes - ($1.finalBytes ?? $1.originalBytes)) }
         showToast(saved > 0
-            ? "Done — saved \(Formatters.bytes(saved))"
-            : "Done — files were already optimal")
+            ? String(format: L("Done — saved %@"), Formatters.bytes(saved))
+            : L("Done — files were already optimal"))
     }
 
     // MARK: - File helpers

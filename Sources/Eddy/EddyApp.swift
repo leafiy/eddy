@@ -1,4 +1,5 @@
 import AppKit
+import LeafiyUICore
 import SwiftUI
 import LeafiyUI
 
@@ -28,10 +29,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct EddyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @AppStorage("appLanguage") private var languageRaw = AppLanguage.system.rawValue
+
+    init() {
+        LeafiyLocalization.language = Self.language(from: UserDefaults.standard.string(forKey: "appLanguage"))
+    }
+
+    private var appLanguage: AppLanguage {
+        Self.language(from: languageRaw)
+    }
+
+    private static func language(from rawValue: String?) -> AppLanguage {
+        AppLanguage(rawValue: rawValue ?? AppLanguage.system.rawValue) ?? .system
+    }
+
+    private func applyLanguage(_ rawValue: String) {
+        LeafiyLocalization.language = Self.language(from: rawValue)
+    }
+
 
     var body: some Scene {
         WindowGroup("eddy", id: "main") {
             ContentView()
+                .id(appLanguage)
+                .onChange(of: languageRaw) { _, newValue in
+                    applyLanguage(newValue)
+                }
         }
         .defaultSize(width: 640, height: 420)
         .windowResizability(.contentMinSize)
@@ -39,7 +62,7 @@ struct EddyApp: App {
             // Menu command instead of onPasteCommand: works regardless of
             // which view has focus.
             CommandGroup(replacing: .pasteboard) {
-                Button("Paste Images") {
+                Button(L("Paste Images")) {
                     Store.shared.pasteFromClipboard()
                 }
                 .keyboardShortcut("v", modifiers: .command)
@@ -48,8 +71,10 @@ struct EddyApp: App {
 
         MenuBarExtra {
             EddyMenuContent()
+                .id(appLanguage)
         } label: {
             EddyMenuBarIcon()
+                .id(appLanguage)
         }
         .menuBarExtraStyle(.menu)
 
@@ -57,9 +82,13 @@ struct EddyApp: App {
             SettingsScaffold {
                 EddyGeneralSettingsPane()
                 AboutPane(
-                    tagline: "Drag-and-drop image compression — files are optimized in place.",
-                    copyright: "© 2026 Leafiy"
+                    tagline: L("Drag-and-drop image compression — files are optimized in place."),
+                    copyright: L("© 2026 Leafiy")
                 )
+            }
+            .id(appLanguage)
+            .onChange(of: languageRaw) { _, newValue in
+                applyLanguage(newValue)
             }
         }
     }
@@ -87,18 +116,18 @@ private struct EddyMenuContent: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Button("Open eddy") {
+        Button(L("Open eddy")) {
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
         }
-        Button("Paste Images") {
+        Button(L("Paste Images")) {
             Store.shared.pasteFromClipboard()
         }
         Divider()
-        Button("Settings…") {
+        Button(L("Settings…")) {
             openSettingsWindow()
         }
-        Button("Quit eddy") {
+        Button(L("Quit eddy")) {
             NSApp.terminate(nil)
         }
     }
@@ -126,11 +155,26 @@ private struct EddyGeneralSettingsPane: View {
     @AppStorage("compressionQuality") private var qualityPercent = 80.0
     @AppStorage("resizeMaxWidth") private var resizeMaxWidth = 0
     @AppStorage("defaultSaveFormat") private var saveFormatRaw = SaveFormat.keep.rawValue
+    @AppStorage("appLanguage") private var languageRaw = AppLanguage.system.rawValue
+
+    private var languageBinding: Binding<AppLanguage> {
+        Binding {
+            AppLanguage(rawValue: languageRaw) ?? .system
+        } set: { newLanguage in
+            languageRaw = newLanguage.rawValue
+            LeafiyLocalization.language = newLanguage
+        }
+    }
+
 
     var body: some View {
-        SettingsPane("General", systemImage: "gearshape", height: 340) {
-            Section("Compression") {
-                LabeledContent("Default quality") {
+        SettingsPane(L("General"), systemImage: "gearshape", height: 390) {
+            Section(L("General")) {
+                LanguagePicker(selection: languageBinding)
+            }
+
+            Section(L("Compression")) {
+                LabeledContent(L("Default quality")) {
                     HStack(spacing: LeafiyDesign.Spacing.s) {
                         Slider(value: $qualityPercent, in: 10...100, step: 5)
                         Text("\(Int(qualityPercent))%")
@@ -138,21 +182,21 @@ private struct EddyGeneralSettingsPane: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Picker("Save format", selection: $saveFormatRaw) {
+                Picker(L("Save format"), selection: $saveFormatRaw) {
                     ForEach(SaveFormat.allCases) { format in
                         Text(format.title).tag(format.rawValue)
                     }
                 }
             }
 
-            Section("Resize") {
-                Picker("Max width", selection: $resizeMaxWidth) {
+            Section(L("Resize")) {
+                Picker(L("Max width"), selection: $resizeMaxWidth) {
                     ForEach(ResizeMaxWidthOption.all) { option in
                         Text(option.title).tag(option.width)
                     }
                 }
 
-                Text("Images are optimized in place — choosing PNG or JPEG converts other formats and replaces the original file. These defaults are used for new drops.")
+                Text(L("Images are optimized in place — choosing PNG or JPEG converts other formats and replaces the original file. These defaults are used for new drops."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

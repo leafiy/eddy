@@ -5,21 +5,32 @@ import UniformTypeIdentifiers
 
 struct ResizeMaxWidthOption: Identifiable {
     let width: Int
-    let title: String
 
     var id: Int { width }
+    var title: String {
+        switch width {
+        case 0: return L("Original size")
+        case 800: return L("800 px — blogs")
+        case 1080: return L("1080 px — Instagram")
+        case 1200: return L("1200 px — X / Facebook")
+        case 1600: return L("1600 px")
+        case 2048: return L("2048 px — high-res")
+        default: return String(format: L("≤ %d px"), width)
+        }
+    }
+
 
     static let all = [
-        ResizeMaxWidthOption(width: 0, title: "Original size"),
-        ResizeMaxWidthOption(width: 800, title: "800 px — blogs"),
-        ResizeMaxWidthOption(width: 1080, title: "1080 px — Instagram"),
-        ResizeMaxWidthOption(width: 1200, title: "1200 px — X / Facebook"),
-        ResizeMaxWidthOption(width: 1600, title: "1600 px"),
-        ResizeMaxWidthOption(width: 2048, title: "2048 px — high-res")
+        ResizeMaxWidthOption(width: 0),
+        ResizeMaxWidthOption(width: 800),
+        ResizeMaxWidthOption(width: 1080),
+        ResizeMaxWidthOption(width: 1200),
+        ResizeMaxWidthOption(width: 1600),
+        ResizeMaxWidthOption(width: 2048)
     ]
 
     static func title(for width: Int) -> String {
-        all.first { $0.width == width }?.title ?? "≤ \(width) px"
+        all.first { $0.width == width }?.title ?? String(format: L("≤ %d px"), width)
     }
 }
 
@@ -88,17 +99,17 @@ struct ContentView: View {
     /// froze these controls. Save format is Settings-only by request.
     private var settingsBar: some View {
         ControlBar {
-            settingControl("Quality") {
+            settingControl(L("Quality")) {
                 Slider(value: $qualityPercent, in: 10...100, step: 5)
                     .frame(width: Metrics.qualitySliderWidth)
                 Text("\(Int(qualityPercent))%")
                     .monospacedDigit()
             }
-            .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
+            .help(L("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files."))
 
             Divider()
 
-            settingControl("Size") {
+            settingControl(L("Size")) {
                 Menu {
                     ForEach(ResizeMaxWidthOption.all) { option in
                         sizeOption(option)
@@ -108,7 +119,7 @@ struct ContentView: View {
                 }
                 .fixedSize()
             }
-            .help("Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files.")
+            .help(L("Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files."))
             Spacer()
         }
         .font(.callout)
@@ -145,8 +156,8 @@ struct ContentView: View {
     private var emptyHint: some View {
         EmptyStateView(
             systemImage: "photo.on.rectangle.angled",
-            title: "Drop images here",
-            subtitle: "JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC\n⌘O to open · ⌘V to paste · files are optimized in place, replaced only when smaller"
+            title: L("Drop images here"),
+            subtitle: L("JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC\n⌘O to open · ⌘V to paste · files are optimized in place, replaced only when smaller")
         )
     }
 
@@ -156,11 +167,13 @@ struct ContentView: View {
         let final = finished.reduce(0) { $0 + ($1.finalBytes ?? 0) }
         let saved = original - final
         return FooterBar {
-            Text("\(store.items.count) file\(store.items.count == 1 ? "" : "s")")
+            Text(store.items.count == 1
+                ? String(format: L("%d file"), store.items.count)
+                : String(format: L("%d files"), store.items.count))
                 .monospacedDigit()
             Spacer()
             if original > 0 {
-                Text("Saved \(Formatters.bytes(saved)) (\(Formatters.percent(Double(saved) / Double(original))))")
+                Text(String(format: L("Saved %@ (%@)"), Formatters.bytes(saved), Formatters.percent(Double(saved) / Double(original))))
                     .fontWeight(saved > 0 ? .semibold : .regular)
                     .monospacedDigit()
             }
@@ -172,19 +185,19 @@ struct ContentView: View {
             Button {
                 showingOpenPanel = true
             } label: {
-                Label("Open", systemImage: "folder")
+                Label(L("Open"), systemImage: "folder")
             }
             .keyboardShortcut("o", modifiers: .command)
-            .help("Choose images or folders (⌘O)")
+            .help(L("Choose images or folders (⌘O)"))
         }
         ToolbarItem(placement: .automatic) {
             Button {
                 store.clearFinished()
             } label: {
-                Label("Clear", systemImage: "trash")
+                Label(L("Clear"), systemImage: "trash")
             }
             .disabled(store.items.isEmpty)
-            .help("Remove finished entries from the list")
+            .help(L("Remove finished entries from the list"))
         }
     }
 }
@@ -219,15 +232,15 @@ struct ItemRow: View {
             NSWorkspace.shared.open(item.url)
         }
         .contextMenu {
-            Button("Show in Finder") {
+            Button(L("Show in Finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
             }
-            Button("Copy Path") {
+            Button(L("Copy Path")) {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(item.url.path, forType: .string)
             }
             Divider()
-            Button("Remove from List") {
+            Button(L("Remove from List")) {
                 Store.shared.removeItem(item.id)
             }
         }
@@ -256,7 +269,7 @@ struct ItemRow: View {
     @ViewBuilder private var statusColumn: some View {
         switch item.status {
         case .pending:
-            Text("waiting")
+            Text(L("waiting"))
                 .foregroundStyle(.secondary)
         case .processing:
             ProgressView()
@@ -273,9 +286,9 @@ struct ItemRow: View {
         case .unchanged:
             Text("0%")
                 .foregroundStyle(.secondary)
-                .help("Already smaller than the re-encoded result; original kept")
+                .help(L("Already smaller than the re-encoded result; original kept"))
         case .failed(let message):
-            Label("failed", systemImage: "exclamationmark.triangle.fill")
+            Label(L("failed"), systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
                 .help(message)
         }

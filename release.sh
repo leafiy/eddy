@@ -64,6 +64,12 @@ build_dmg() { # $1 = arch
     cp "$bin_dir/eddy" "$app/Contents/MacOS/eddy"
     printf 'APPL????' > "$app/Contents/PkgInfo"
     [ -f build/AppIcon.icns ] && cp build/AppIcon.icns "$app/Contents/Resources/AppIcon.icns"
+    if [ -d "$bin_dir/eddy_eddy.bundle" ]; then
+        cp -R "$bin_dir/eddy_eddy.bundle" "$app/Contents/Resources/"
+    fi
+    if [ -d "$bin_dir/LeafiyUI_LeafiyUI.bundle" ]; then
+        cp -R "$bin_dir/LeafiyUI_LeafiyUI.bundle" "$app/Contents/Resources/"
+    fi
     if [ "$SIGN_IDENTITY" = "-" ]; then
         codesign --force --sign - "$app"
         if [ -n "$NOTARY_PROFILE" ]; then

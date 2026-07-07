@@ -1,0 +1,59 @@
+/* Eddy app strings — English key → Simplified Chinese. */
+
+"Paste Images" = "粘贴图像";
+"Drag-and-drop image compression — files are optimized in place." = "拖放即可压缩图像——文件会原地优化。";
+"© 2026 Leafiy" = "© 2026 Leafiy";
+"Open eddy" = "打开 eddy";
+"Settings…" = "设置…";
+"Quit eddy" = "退出 eddy";
+"General" = "通用";
+"Compression" = "压缩";
+"Default quality" = "默认质量";
+"Save format" = "存储格式";
+"Resize" = "调整尺寸";
+"Max width" = "最大宽度";
+"Images are optimized in place — choosing PNG or JPEG converts other formats and replaces the original file. These defaults are used for new drops." = "图像会原地优化——选择 PNG 或 JPEG 会将其他格式转换并替换原文件。这些默认设置会用于新拖入的文件。";
+
+"Original size" = "原始尺寸";
+"800 px — blogs" = "800 px — 博客";
+"1080 px — Instagram" = "1080 px — Instagram";
+"1200 px — X / Facebook" = "1200 px — X / Facebook";
+"1600 px" = "1600 px";
+"2048 px — high-res" = "2048 px — 高分辨率";
+"≤ %d px" = "≤ %d px";
+"Quality" = "质量";
+"Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files." = "JPEG/WebP/AVIF/HEIC 的有损质量。适用于新拖入的文件。";
+"Size" = "尺寸";
+"Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files." = "缩小到此宽度（保持宽高比，不会放大）。适用于新拖入的文件。";
+"Drop images here" = "将图像拖到这里";
+"JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC\n⌘O to open · ⌘V to paste · files are optimized in place, replaced only when smaller" = "JPEG · PNG · GIF · BMP · WebP · AVIF · TIFF · HEIC\n⌘O 打开 · ⌘V 粘贴 · 文件会原地优化，仅在变小时替换";
+"%d file" = "%d 个文件";
+"%d files" = "%d 个文件";
+"Saved %@ (%@)" = "已节省 %@（%@）";
+"Open" = "打开";
+"Choose images or folders (⌘O)" = "选择图像或文件夹（⌘O）";
+"Clear" = "清除";
+"Remove finished entries from the list" = "从列表中移除已完成的项目";
+"Show in Finder" = "在 Finder 中显示";
+"Copy Path" = "拷贝路径";
+"Remove from List" = "从列表中移除";
+"waiting" = "等待中";
+"Already smaller than the re-encoded result; original kept" = "已小于重新编码后的结果；保留原文件";
+"failed" = "失败";
+
+"Pasted image saved to %@" = "粘贴的图像已存储到 %@";
+"Could not save the pasted image" = "无法存储粘贴的图像";
+"No image in the clipboard" = "剪贴板中没有图像";
+"No supported images — skipped %d file" = "没有支持的图像——已跳过 %d 个文件";
+"No supported images — skipped %d files" = "没有支持的图像——已跳过 %d 个文件";
+"Skipped %d unsupported file" = "已跳过 %d 个不支持的文件";
+"Skipped %d unsupported files" = "已跳过 %d 个不支持的文件";
+"Done — saved %@" = "完成——已节省 %@";
+"Done — files were already optimal" = "完成——文件已是最佳大小";
+
+"cannot read file" = "无法读取文件";
+"not a recognized image" = "不是可识别的图像";
+"re-encoding failed" = "重新编码失败";
+"Keep original format" = "保持原格式";
+"no JPEG encoder available on this macOS" = "此 macOS 上没有可用的 JPEG 编码器";
+"no encoder available for .%@ on this macOS" = "此 macOS 上没有可用于 .%@ 的编码器";

@@ -37,6 +37,12 @@ cp Info.plist "$APP/Contents/Info.plist"
 cp "$BIN_DIR/eddy" "$APP/Contents/MacOS/eddy"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 [ -f logo.png ] && make_icns "$APP/Contents/Resources/AppIcon.icns"
+if [ -d "$BIN_DIR/eddy_eddy.bundle" ]; then
+    cp -R "$BIN_DIR/eddy_eddy.bundle" "$APP/Contents/Resources/"
+fi
+if [ -d "$BIN_DIR/LeafiyUI_LeafiyUI.bundle" ]; then
+    cp -R "$BIN_DIR/LeafiyUI_LeafiyUI.bundle" "$APP/Contents/Resources/"
+fi
 
 if [ -z "$SIGN_IDENTITY" ]; then
     SIGN_IDENTITY=$(security find-identity -v -p codesigning \

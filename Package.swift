@@ -3,6 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "eddy",
+    defaultLocalization: "en",
     platforms: [.macOS(.v14)],
     dependencies: [
         .package(path: "../leafiy-ui"),
@@ -24,10 +25,12 @@ let package = Package(
             dependencies: [
                 "libimagequant",
                 .product(name: "LeafiyUI", package: "leafiy-ui"),
+                .product(name: "LeafiyUICore", package: "leafiy-ui"),
                 .product(name: "libwebp", package: "libwebp-Xcode"),
                 .product(name: "libavif", package: "libavif-Xcode"),
             ],
-            path: "Sources/Eddy"
+            path: "Sources/Eddy",
+            resources: [.process("Resources")]
         )
     ]
 )

@@ -11,10 +11,10 @@ enum CompressionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unreadableFile:                 return "cannot read file"
-        case .unknownFormat:                  return "not a recognized image"
+        case .unreadableFile:                 return L("cannot read file")
+        case .unknownFormat:                  return L("not a recognized image")
         case .encodingUnsupported(let hint):  return hint
-        case .encodeFailed:                   return "re-encoding failed"
+        case .encodeFailed:                   return L("re-encoding failed")
         }
     }
 }
@@ -41,7 +41,7 @@ enum SaveFormat: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .keep: return "Keep original format"
+        case .keep: return L("Keep original format")
         case .png:  return "PNG"
         case .jpeg: return "JPEG"
         }
@@ -166,7 +166,7 @@ enum Compressor {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
             data, UTType.jpeg.identifier as CFString, 1, nil)
-        else { throw CompressionError.encodingUnsupported("no JPEG encoder available on this macOS") }
+        else { throw CompressionError.encodingUnsupported(L("no JPEG encoder available on this macOS")) }
         let properties: [CFString: Any] = [
             kCGImageDestinationLossyCompressionQuality: quality,
             kCGImagePropertyJFIFDictionary: [kCGImagePropertyJFIFIsProgressive: true],
@@ -323,7 +323,7 @@ enum Compressor {
 
         guard let destination = CGImageDestinationCreateWithURL(
             output as CFURL, typeID, frameCount, nil)
-        else { throw CompressionError.encodingUnsupported("no encoder available for .\(ext) on this macOS") }
+        else { throw CompressionError.encodingUnsupported(String(format: L("no encoder available for .%@ on this macOS"), ext)) }
 
         if isGIF,
            let containerProps = CGImageSourceCopyProperties(source, nil) as? [CFString: Any],
