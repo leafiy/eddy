@@ -17,6 +17,10 @@ struct ResizeMaxWidthOption: Identifiable {
         ResizeMaxWidthOption(width: 1600, title: "1600 px"),
         ResizeMaxWidthOption(width: 2048, title: "2048 px — high-res")
     ]
+
+    static func title(for width: Int) -> String {
+        all.first { $0.width == width }?.title ?? "≤ \(width) px"
+    }
 }
 
 struct ContentView: View {
@@ -28,6 +32,12 @@ struct ContentView: View {
     @State private var showingOpenPanel = false
 
     private var saveFormat: SaveFormat { SaveFormat(rawValue: saveFormatRaw) ?? .keep }
+
+    private enum Metrics {
+        /// Fixed slider width keeps the quality/size strip one compact line
+        /// instead of the slider greedily spanning the whole window.
+        static let qualitySliderWidth: CGFloat = 140
+    }
 
     var body: some View {
         content
@@ -58,6 +68,9 @@ struct ContentView: View {
 
     @ViewBuilder private var content: some View {
         VStack(spacing: .zero) {
+            settingsBar
+                .padding(.horizontal, LeafiyDesign.Spacing.m)
+                .padding(.vertical, LeafiyDesign.Spacing.s)
             if store.items.isEmpty {
                 emptyHint
             } else {
@@ -66,6 +79,61 @@ struct ContentView: View {
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: true))
                 footer
+            }
+        }
+    }
+
+    /// Quick per-drop settings. Lives in the window content, not the toolbar:
+    /// macOS toolbar items do not reliably re-render on state changes, which
+    /// froze these controls. Save format is Settings-only by request.
+    private var settingsBar: some View {
+        ControlBar {
+            settingControl("Quality") {
+                Slider(value: $qualityPercent, in: 10...100, step: 5)
+                    .frame(width: Metrics.qualitySliderWidth)
+                Text("\(Int(qualityPercent))%")
+                    .monospacedDigit()
+            }
+            .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
+
+            Divider()
+
+            settingControl("Size") {
+                Menu {
+                    ForEach(ResizeMaxWidthOption.all) { option in
+                        sizeOption(option)
+                    }
+                } label: {
+                    Text(ResizeMaxWidthOption.title(for: resizeMaxWidth))
+                }
+                .fixedSize()
+            }
+            .help("Downscale to this width (aspect ratio kept, never upscales). Applies to newly dropped files.")
+            Spacer()
+        }
+        .font(.callout)
+        .controlSize(.small)
+    }
+
+    private func settingControl<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: LeafiyDesign.Spacing.s) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    private func sizeOption(_ option: ResizeMaxWidthOption) -> some View {
+        Button {
+            resizeMaxWidth = option.width
+        } label: {
+            if resizeMaxWidth == option.width {
+                Label(option.title, systemImage: "checkmark")
+            } else {
+                Text(option.title)
             }
         }
     }
