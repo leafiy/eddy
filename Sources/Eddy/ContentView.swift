@@ -56,9 +56,8 @@ struct ContentView: View {
     /// Lives in the window content, not the toolbar: macOS toolbar items do
     /// not reliably re-render on state changes, which froze these controls.
     private var settingsBar: some View {
-        HStack(spacing: 20) {
-            HStack(spacing: 8) {
-                Text("Quality")
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            settingControl("Quality") {
                 Slider(value: $qualityPercent, in: 10...100, step: 5)
                     .frame(width: 140)
                 Text("\(Int(qualityPercent))%")
@@ -66,8 +65,11 @@ struct ContentView: View {
                     .frame(width: 40, alignment: .leading)
             }
             .help("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files.")
-            HStack(spacing: 8) {
-                Text("Size")
+
+            Divider()
+                .frame(height: 18)
+
+            settingControl("Size") {
                 Menu {
                     sizeOption(0, "Original size")
                     sizeOption(800, "800 px — blogs")
@@ -86,6 +88,18 @@ struct ContentView: View {
         .font(.callout)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    private func settingControl<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .frame(width: 52, alignment: .trailing)
+            content()
+        }
     }
 
     @ViewBuilder private var toastOverlay: some View {
