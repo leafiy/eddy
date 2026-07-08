@@ -1,5 +1,5 @@
 #!/bin/sh
-# One-line installer for eddy — avoids Gatekeeper quarantine entirely because
+# One-line installer for Eddy — avoids Gatekeeper quarantine entirely because
 # curl (unlike browsers) does not attach the com.apple.quarantine flag.
 #
 #   curl -fsSL http://192.168.52.4:5010/leafiy/eddy/raw/branch/main/install.sh | sh
@@ -34,17 +34,17 @@ curl -fSL -o "$TMP_DMG" "$DMG_URL"
 
 echo "installing to /Applications..."
 MOUNT_POINT=$(hdiutil attach -nobrowse -readonly "$TMP_DMG" | awk -F'\t' '/\/Volumes\//{print $NF; exit}')
-[ -d "$MOUNT_POINT/eddy.app" ] || { echo "error: eddy.app not found in DMG"; hdiutil detach "$MOUNT_POINT" -quiet; exit 1; }
+[ -d "$MOUNT_POINT/Eddy.app" ] || { echo "error: Eddy.app not found in DMG"; hdiutil detach "$MOUNT_POINT" -quiet; exit 1; }
 
 DEST=/Applications
 [ -w "$DEST" ] || DEST="$HOME/Applications"
 mkdir -p "$DEST"
-rm -rf "$DEST/eddy.app"
-ditto "$MOUNT_POINT/eddy.app" "$DEST/eddy.app"
+rm -rf "$DEST/Eddy.app" "$DEST/eddy.app"
+ditto "$MOUNT_POINT/Eddy.app" "$DEST/Eddy.app"
 hdiutil detach "$MOUNT_POINT" -quiet
 
 # Register with LaunchServices so Launchpad/Spotlight pick it up immediately.
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST/eddy.app" || true
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST/Eddy.app" || true
 
-echo "installed: $DEST/eddy.app"
-open "$DEST/eddy.app"
+echo "installed: $DEST/Eddy.app"
+open "$DEST/Eddy.app"

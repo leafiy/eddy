@@ -95,20 +95,31 @@ struct EddyApp: App {
 }
 
 private struct EddyMenuBarIcon: View {
-    /// Sized once: the status bar draws the NSImage's own point size;
-    /// SwiftUI frames on MenuBarExtra labels don't reliably constrain it.
-    /// The application icon comes from the bundle's icns at launch.
-    private static let icon = NSApplication.shared.applicationIconImage?.leafiyMenuBarSized()
+    private static let icon = NSImage.eddyIcon()?.leafiyMenuBarSized()
 
     var body: some View {
         Group {
             if let icon = Self.icon {
                 Image(nsImage: icon)
-            } else {
-                Image(systemName: "photo.on.rectangle.angled")
+                    .frame(width: LeafiyDesign.Size.menuBarIcon, height: LeafiyDesign.Size.menuBarIcon)
             }
         }
-        .accessibilityLabel("eddy")
+        .frame(width: LeafiyDesign.Size.menuBarIcon, height: LeafiyDesign.Size.menuBarIcon)
+        .accessibilityLabel("Eddy")
+    }
+}
+
+private extension NSImage {
+    static func eddyIcon() -> NSImage? {
+        for bundle in [Bundle.module, Bundle.main] {
+            guard let url = bundle.url(forResource: "eddy", withExtension: "png"),
+                  let image = NSImage(contentsOf: url) else {
+                continue
+            }
+            image.accessibilityDescription = "Eddy"
+            return image
+        }
+        return nil
     }
 }
 
