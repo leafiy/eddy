@@ -69,9 +69,8 @@ JSON
     rm -rf "$iconset"
 }
 
-LOCAL_BUILD_ROOT="${LOCAL_BUILD_ROOT:-"${TMPDIR%/}/leafiy-app-builds/eddy"}"
-APP="$LOCAL_BUILD_ROOT/Eddy.app"
-rm -rf "$LOCAL_BUILD_ROOT"
+APP="Eddy.app"
+rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Info.plist "$APP/Contents/Info.plist"
 cp "$BIN_DIR/eddy" "$APP/Contents/MacOS/Eddy"
@@ -101,4 +100,4 @@ else
     codesign --force --sign - "$APP"
 fi
 
-echo "Done: $APP"
+echo "Done: $(pwd)/$APP"
