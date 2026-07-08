@@ -3,9 +3,9 @@
 # release with both attached on the Gitea server.
 #
 # Usage, on a Mac with the Xcode command line tools:
-#   NOTARY_PROFILE="eddy-notary" sh release.sh                 # package only
-#   NOTARY_PROFILE="eddy-notary" GITEA_TOKEN=xxxx sh release.sh # package + upload
-#   NOTARY_PROFILE="eddy-notary" sh release.sh v1.2             # explicit version tag
+#   sh release.sh                 # bumps patch version, package only
+#   GITEA_TOKEN=xxxx sh release.sh # bumps patch version, package + upload
+#   sh release.sh v1.2.3           # explicit version tag
 #
 # Token: Gitea web UI -> Settings -> Applications -> Generate Token
 # (repository read/write scope). Only needed for upload.
@@ -15,15 +15,36 @@ cd "$(dirname "$0")"
 command -v swift >/dev/null 2>&1 || { echo "error: needs macOS with Xcode command line tools"; exit 1; }
 APP_ICON_DIR="icons"
 MENU_ICON_PNG="$APP_ICON_DIR/Icon-iOS-Default-20@2x.png"
+APP_SLUG="eddy"
 [ -f "$APP_ICON_DIR/Icon-iOS-Default-1024@1x.png" ] || { echo "error: $APP_ICON_DIR/Icon-iOS-Default-1024@1x.png not found"; exit 1; }
 [ -f "$MENU_ICON_PNG" ] || { echo "error: $MENU_ICON_PNG not found"; exit 1; }
 
-VERSION="${1:-v$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)}"
+increment_version() {
+    printf '%s\n' "$1" | awk -F. '
+        BEGIN { OFS = "." }
+        NF < 1 || $NF !~ /^[0-9]+$/ { exit 1 }
+        { $NF = $NF + 1; print }
+    '
+}
+
+CURRENT_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Info.plist)
+if [ "${1:-}" ]; then
+    VERSION_NUMBER="${1#v}"
+else
+    VERSION_NUMBER=$(increment_version "$CURRENT_VERSION") || { echo "error: cannot increment version '$CURRENT_VERSION'"; exit 1; }
+fi
+VERSION="v$VERSION_NUMBER"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NUMBER" Info.plist >/dev/null
+CURRENT_BUILD=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Info.plist 2>/dev/null || printf '0')
+if printf '%s\n' "$CURRENT_BUILD" | grep -Eq '^[0-9]+$'; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((CURRENT_BUILD + 1))" Info.plist >/dev/null
+fi
+
 GITEA_URL="${GITEA_URL:-http://192.168.52.4:5010}"
 OWNER_REPO=$(git remote get-url origin | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')
-APP_SLUG="eddy"
-WORK_ROOT="${RELEASE_WORK_ROOT:-"${TMPDIR%/}/leafiy-release-$APP_SLUG-$VERSION"}"
-ARTIFACT_DIR="${ARTIFACT_DIR:-"$HOME/Downloads/leafiy-releases/$APP_SLUG"}"
+BUILD_ROOT="${BUILD_ROOT:-"$PWD/build"}"
+WORK_ROOT="${RELEASE_WORK_ROOT:-"$BUILD_ROOT/release-work/$VERSION"}"
+ARTIFACT_DIR="${ARTIFACT_DIR:-"$BUILD_ROOT/release/$VERSION"}"
 
 # Developer ID signing + notarization (required for public downloads without
 # Gatekeeper friction). One-time setup:
@@ -35,7 +56,7 @@ ARTIFACT_DIR="${ARTIFACT_DIR:-"$HOME/Downloads/leafiy-releases/$APP_SLUG"}"
 APPLE_ID="${APPLE_ID:-tmly2006@gmail.com}"
 TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-$APP_SLUG-notary}"
 ALLOW_UNNOTARIZED="${ALLOW_UNNOTARIZED:-0}"
 
 if [ -z "$SIGN_IDENTITY" ]; then
@@ -65,43 +86,19 @@ fi
 compile_app_icon_assets() { # $1 = source png, $2 = destination dir
     src="$1"
     dest="$2"
-    assets="$WORK_ROOT/AppIcon.xcassets"
-    appicon="$assets/AppIcon.appiconset"
-    partial="$WORK_ROOT/AppIcon.partial.plist"
-    rm -rf "$assets"
-    mkdir -p "$appicon" "$dest"
-    cp "$src/Icon-iOS-Default-16@1x.png" "$appicon/icon_16x16.png"
-    cp "$src/Icon-iOS-Default-16@2x.png" "$appicon/icon_16x16@2x.png"
-    cp "$src/Icon-iOS-Default-32@1x.png" "$appicon/icon_32x32.png"
-    cp "$src/Icon-iOS-Default-32@2x.png" "$appicon/icon_32x32@2x.png"
-    cp "$src/Icon-iOS-Default-128@1x.png" "$appicon/icon_128x128.png"
-    cp "$src/Icon-iOS-Default-128@2x.png" "$appicon/icon_128x128@2x.png"
-    cp "$src/Icon-iOS-Default-256@1x.png" "$appicon/icon_256x256.png"
-    cp "$src/Icon-iOS-Default-256@2x.png" "$appicon/icon_256x256@2x.png"
-    cp "$src/Icon-iOS-Default-512@1x.png" "$appicon/icon_512x512.png"
-    cp "$src/Icon-iOS-Default-1024@1x.png" "$appicon/icon_512x512@2x.png"
-    cat > "$appicon/Contents.json" <<'JSON'
-{
-  "images" : [
-    { "filename" : "icon_16x16.png", "idiom" : "mac", "scale" : "1x", "size" : "16x16" },
-    { "filename" : "icon_16x16@2x.png", "idiom" : "mac", "scale" : "2x", "size" : "16x16" },
-    { "filename" : "icon_32x32.png", "idiom" : "mac", "scale" : "1x", "size" : "32x32" },
-    { "filename" : "icon_32x32@2x.png", "idiom" : "mac", "scale" : "2x", "size" : "32x32" },
-    { "filename" : "icon_128x128.png", "idiom" : "mac", "scale" : "1x", "size" : "128x128" },
-    { "filename" : "icon_128x128@2x.png", "idiom" : "mac", "scale" : "2x", "size" : "128x128" },
-    { "filename" : "icon_256x256.png", "idiom" : "mac", "scale" : "1x", "size" : "256x256" },
-    { "filename" : "icon_256x256@2x.png", "idiom" : "mac", "scale" : "2x", "size" : "256x256" },
-    { "filename" : "icon_512x512.png", "idiom" : "mac", "scale" : "1x", "size" : "512x512" },
-    { "filename" : "icon_512x512@2x.png", "idiom" : "mac", "scale" : "2x", "size" : "512x512" }
-  ],
-  "info" : { "author" : "xcode", "version" : 1 }
-}
-JSON
-    xcrun actool --compile "$dest" --platform macosx --minimum-deployment-target 14.0 --app-icon AppIcon --output-partial-info-plist "$partial" "$assets" >/dev/null
     iconset="$WORK_ROOT/AppIcon.iconset"
     rm -rf "$iconset"
-    mkdir -p "$iconset"
-    cp "$appicon"/icon_*.png "$iconset/"
+    mkdir -p "$iconset" "$dest"
+    cp "$src/Icon-iOS-Default-16@1x.png" "$iconset/icon_16x16.png"
+    cp "$src/Icon-iOS-Default-16@2x.png" "$iconset/icon_16x16@2x.png"
+    cp "$src/Icon-iOS-Default-32@1x.png" "$iconset/icon_32x32.png"
+    cp "$src/Icon-iOS-Default-32@2x.png" "$iconset/icon_32x32@2x.png"
+    cp "$src/Icon-iOS-Default-128@1x.png" "$iconset/icon_128x128.png"
+    cp "$src/Icon-iOS-Default-128@2x.png" "$iconset/icon_128x128@2x.png"
+    cp "$src/Icon-iOS-Default-256@1x.png" "$iconset/icon_256x256.png"
+    cp "$src/Icon-iOS-Default-256@2x.png" "$iconset/icon_256x256@2x.png"
+    cp "$src/Icon-iOS-Default-512@1x.png" "$iconset/icon_512x512.png"
+    cp "$src/Icon-iOS-Default-1024@1x.png" "$iconset/icon_512x512@2x.png"
     iconutil -c icns "$iconset" -o "$dest/AppIcon.icns"
     rm -rf "$iconset"
 }
@@ -120,7 +117,7 @@ build_dmg() { # $1 = arch
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION#v}" "$app/Contents/Info.plist"
     cp "$bin_dir/eddy" "$app/Contents/MacOS/Eddy"
     printf 'APPL????' > "$app/Contents/PkgInfo"
-    cp "$WORK_ROOT/AppIcon.icns" "$WORK_ROOT/Assets.car" "$app/Contents/Resources/"
+    cp "$WORK_ROOT/AppIcon.icns" "$app/Contents/Resources/"
     cp "$MENU_ICON_PNG" "$app/Contents/Resources/eddy.png"
     if [ -d "$bin_dir/eddy_eddy.bundle" ]; then
         cp -R "$bin_dir/eddy_eddy.bundle" "$app/Contents/Resources/"
@@ -130,6 +127,12 @@ build_dmg() { # $1 = arch
     if [ -d "$bin_dir/LeafiyUI_LeafiyUI.bundle" ]; then
         cp -R "$bin_dir/LeafiyUI_LeafiyUI.bundle" "$app/Contents/Resources/"
     fi
+    [ ! -e "$app/Contents/Resources/Assets.car" ] || { echo "error: Assets.car must not be bundled"; exit 1; }
+    if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist" >/dev/null 2>&1; then
+        echo "error: CFBundleIconName must not be set"
+        exit 1
+    fi
+    cmp -s "$MENU_ICON_PNG" "$app/Contents/Resources/eddy.png" || { echo "error: menu bar icon does not match $MENU_ICON_PNG"; exit 1; }
     if [ "$SIGN_IDENTITY" = "-" ]; then
         codesign --force --sign - "$app"
         if [ -n "$NOTARY_PROFILE" ]; then
@@ -170,6 +173,7 @@ mkdir -p "$WORK_ROOT" "$ARTIFACT_DIR"
 compile_app_icon_assets "$APP_ICON_DIR" "$WORK_ROOT"
 build_dmg arm64
 build_dmg x86_64
+rm -rf "$WORK_ROOT"
 
 if [ -z "${GITEA_TOKEN:-}" ]; then
     echo "GITEA_TOKEN is not set; skipping Gitea upload."

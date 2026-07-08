@@ -95,7 +95,7 @@ struct EddyApp: App {
 }
 
 private struct EddyMenuBarIcon: View {
-    private static let icon = NSImage.eddyIcon()?.leafiyMenuBarSized()
+    private static let icon = NSImage.eddyIcon()?.leafiyMenuBarTemplateSized()
 
     var body: some View {
         Group {
@@ -111,7 +111,7 @@ private struct EddyMenuBarIcon: View {
 
 private extension NSImage {
     static func eddyIcon() -> NSImage? {
-        for bundle in [Bundle.module, Bundle.main] {
+        for bundle in [Bundle.main, Bundle.module] {
             guard let url = bundle.url(forResource: "eddy", withExtension: "png"),
                   let image = NSImage(contentsOf: url) else {
                 continue
