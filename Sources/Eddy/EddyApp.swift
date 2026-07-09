@@ -95,7 +95,7 @@ struct EddyApp: App {
 }
 
 private struct EddyMenuBarIcon: View {
-    private static let icon = NSImage.eddyIcon()?.leafiyMenuBarTemplateSized()
+    private static let icon = NSImage.eddyAppIcon()?.leafiyMenuBarSized()
 
     var body: some View {
         Group {
@@ -110,8 +110,23 @@ private struct EddyMenuBarIcon: View {
 }
 
 private extension NSImage {
+    static func eddyAppIcon() -> NSImage? {
+        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let image = NSImage(contentsOf: url) {
+            image.accessibilityDescription = "Eddy"
+            return image
+        }
+
+        if let image = NSApplication.shared.applicationIconImage,
+           !image.representations.isEmpty {
+            image.accessibilityDescription = "Eddy"
+            return image
+        }
+        return nil
+    }
+
     static func eddyIcon() -> NSImage? {
-        for bundle in [Bundle.main, Bundle.module] {
+        for bundle in [eddyResources, Bundle.main] {
             guard let url = bundle.url(forResource: "eddy", withExtension: "png"),
                   let image = NSImage(contentsOf: url) else {
                 continue
@@ -120,6 +135,21 @@ private extension NSImage {
             return image
         }
         return nil
+    }
+
+    private static var eddyResources: Bundle {
+        let bundleName = "eddy_eddy.bundle"
+        let candidates = [
+            Bundle.main.resourceURL?.appendingPathComponent(bundleName, isDirectory: true),
+            Bundle.main.bundleURL.appendingPathComponent(bundleName, isDirectory: true)
+        ].compactMap { $0 }
+
+        for url in candidates {
+            if let bundle = Bundle(url: url) {
+                return bundle
+            }
+        }
+        return Bundle.main
     }
 }
 

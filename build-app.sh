@@ -7,10 +7,10 @@ cd "$(dirname "$0")"
 TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 
-APP_ICON_DIR="icons"
-MENU_ICON_PNG="$APP_ICON_DIR/Icon-iOS-Default-20@2x.png"
-[ -f "$APP_ICON_DIR/Icon-iOS-Default-1024@1x.png" ] || { echo "error: $APP_ICON_DIR/Icon-iOS-Default-1024@1x.png not found"; exit 1; }
-[ -f "$MENU_ICON_PNG" ] || { echo "error: $MENU_ICON_PNG not found"; exit 1; }
+APP_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
+MENU_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
+[ -f "$APP_ICON_SOURCE" ] || { echo "error: $APP_ICON_SOURCE not found"; exit 1; }
+[ -f "$MENU_ICON_SOURCE" ] || { echo "error: $MENU_ICON_SOURCE not found"; exit 1; }
 
 # Native build for this Mac's CPU by default (works on Intel and Apple
 # Silicon alike). UNIVERSAL=1 sh build-app.sh builds one app for both.
@@ -30,16 +30,16 @@ compile_app_icon_assets() { # $1 = source png, $2 = destination resources dir
     iconset="$work/AppIcon.iconset"
     rm -rf "$work"
     mkdir -p "$iconset" "$resources"
-    cp "$src/Icon-iOS-Default-16@1x.png" "$iconset/icon_16x16.png"
-    cp "$src/Icon-iOS-Default-16@2x.png" "$iconset/icon_16x16@2x.png"
-    cp "$src/Icon-iOS-Default-32@1x.png" "$iconset/icon_32x32.png"
-    cp "$src/Icon-iOS-Default-32@2x.png" "$iconset/icon_32x32@2x.png"
-    cp "$src/Icon-iOS-Default-128@1x.png" "$iconset/icon_128x128.png"
-    cp "$src/Icon-iOS-Default-128@2x.png" "$iconset/icon_128x128@2x.png"
-    cp "$src/Icon-iOS-Default-256@1x.png" "$iconset/icon_256x256.png"
-    cp "$src/Icon-iOS-Default-256@2x.png" "$iconset/icon_256x256@2x.png"
-    cp "$src/Icon-iOS-Default-512@1x.png" "$iconset/icon_512x512.png"
-    cp "$src/Icon-iOS-Default-1024@1x.png" "$iconset/icon_512x512@2x.png"
+    sips -z 16 16 "$src" --out "$iconset/icon_16x16.png" >/dev/null
+    sips -z 32 32 "$src" --out "$iconset/icon_16x16@2x.png" >/dev/null
+    sips -z 32 32 "$src" --out "$iconset/icon_32x32.png" >/dev/null
+    sips -z 64 64 "$src" --out "$iconset/icon_32x32@2x.png" >/dev/null
+    sips -z 128 128 "$src" --out "$iconset/icon_128x128.png" >/dev/null
+    sips -z 256 256 "$src" --out "$iconset/icon_128x128@2x.png" >/dev/null
+    sips -z 256 256 "$src" --out "$iconset/icon_256x256.png" >/dev/null
+    sips -z 512 512 "$src" --out "$iconset/icon_256x256@2x.png" >/dev/null
+    sips -z 512 512 "$src" --out "$iconset/icon_512x512.png" >/dev/null
+    sips -z 1024 1024 "$src" --out "$iconset/icon_512x512@2x.png" >/dev/null
     iconutil -c icns "$iconset" -o "$resources/AppIcon.icns"
     rm -rf "$work"
 }
@@ -50,12 +50,11 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Info.plist "$APP/Contents/Info.plist"
 cp "$BIN_DIR/eddy" "$APP/Contents/MacOS/Eddy"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
-compile_app_icon_assets "$APP_ICON_DIR" "$APP/Contents/Resources"
-cp "$MENU_ICON_PNG" "$APP/Contents/Resources/eddy.png"
+compile_app_icon_assets "$APP_ICON_SOURCE" "$APP/Contents/Resources"
+cp "$MENU_ICON_SOURCE" "$APP/Contents/Resources/eddy.png"
 if [ -d "$BIN_DIR/eddy_eddy.bundle" ]; then
     cp -R "$BIN_DIR/eddy_eddy.bundle" "$APP/Contents/Resources/"
     rm -f "$APP/Contents/Resources/eddy_eddy.bundle/logo.png"
-    cp "$MENU_ICON_PNG" "$APP/Contents/Resources/eddy_eddy.bundle/eddy.png"
 fi
 if [ -d "$BIN_DIR/LeafiyUI_LeafiyUI.bundle" ]; then
     cp -R "$BIN_DIR/LeafiyUI_LeafiyUI.bundle" "$APP/Contents/Resources/"
@@ -66,7 +65,7 @@ if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP/Contents/Info.plis
     echo "error: CFBundleIconName must not be set"
     exit 1
 fi
-cmp -s "$MENU_ICON_PNG" "$APP/Contents/Resources/eddy.png" || { echo "error: menu bar icon does not match $MENU_ICON_PNG"; exit 1; }
+cmp -s "$MENU_ICON_SOURCE" "$APP/Contents/Resources/eddy.png" || { echo "error: menu bar icon does not match $MENU_ICON_SOURCE"; exit 1; }
 
 if [ -z "$SIGN_IDENTITY" ]; then
     SIGN_IDENTITY=$(security find-identity -v -p codesigning \

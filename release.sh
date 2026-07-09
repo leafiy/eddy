@@ -13,11 +13,11 @@ set -eu
 cd "$(dirname "$0")"
 
 command -v swift >/dev/null 2>&1 || { echo "error: needs macOS with Xcode command line tools"; exit 1; }
-APP_ICON_DIR="icons"
-MENU_ICON_PNG="$APP_ICON_DIR/Icon-iOS-Default-20@2x.png"
+APP_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
+MENU_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
 APP_SLUG="eddy"
-[ -f "$APP_ICON_DIR/Icon-iOS-Default-1024@1x.png" ] || { echo "error: $APP_ICON_DIR/Icon-iOS-Default-1024@1x.png not found"; exit 1; }
-[ -f "$MENU_ICON_PNG" ] || { echo "error: $MENU_ICON_PNG not found"; exit 1; }
+[ -f "$APP_ICON_SOURCE" ] || { echo "error: $APP_ICON_SOURCE not found"; exit 1; }
+[ -f "$MENU_ICON_SOURCE" ] || { echo "error: $MENU_ICON_SOURCE not found"; exit 1; }
 
 increment_version() {
     printf '%s\n' "$1" | awk -F. '
@@ -58,6 +58,8 @@ TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-$APP_SLUG-notary}"
 ALLOW_UNNOTARIZED="${ALLOW_UNNOTARIZED:-0}"
+NOTARY_TIMEOUT="${NOTARY_TIMEOUT:-30m}"
+NOTARY_S3_ACCELERATION="${NOTARY_S3_ACCELERATION:-0}"
 
 if [ -z "$SIGN_IDENTITY" ]; then
     SIGN_IDENTITY=$(security find-identity -v -p codesigning \
@@ -82,6 +84,42 @@ if [ -z "$NOTARY_PROFILE" ] && [ "$ALLOW_UNNOTARIZED" != "1" ]; then
     echo "hint:   NOTARY_PROFILE=\"eddy-notary\" GITEA_TOKEN=... sh release.sh"
     exit 1
 fi
+if [ "$SIGN_IDENTITY" != "-" ] && [ -n "$NOTARY_PROFILE" ]; then
+    xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" --team-id "$TEAM_ID" >/dev/null
+fi
+
+detach_dmg_if_attached() { # $1 = dmg path
+    dmg="$1"
+    hdiutil info | awk -v path="$dmg" '
+        $1 == "image-path" && index($0, path) > 0 { found = 1; next }
+        found && /^\/dev\/disk[0-9]+[[:space:]]/ { print $1; found = 0 }
+        /^=+/ { found = 0 }
+    ' | while read -r device; do
+        hdiutil detach "$device" >/dev/null || hdiutil detach -force "$device" >/dev/null || true
+    done
+}
+
+notarize_dmg() { # $1 = dmg path
+    dmg="$1"
+    detach_dmg_if_attached "$dmg"
+    hdiutil verify "$dmg" >/dev/null
+    detach_dmg_if_attached "$dmg"
+    echo "notarizing $dmg (takes a few minutes)..."
+    if [ "$NOTARY_S3_ACCELERATION" = "1" ]; then
+        xcrun notarytool submit "$dmg" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --wait \
+            --timeout "$NOTARY_TIMEOUT"
+    else
+        xcrun notarytool submit "$dmg" \
+            --keychain-profile "$NOTARY_PROFILE" \
+            --no-s3-acceleration \
+            --wait \
+            --timeout "$NOTARY_TIMEOUT"
+    fi
+    xcrun stapler staple "$dmg"
+    spctl -a -vv -t open --context context:primary-signature "$dmg"
+}
 
 compile_app_icon_assets() { # $1 = source png, $2 = destination dir
     src="$1"
@@ -89,16 +127,16 @@ compile_app_icon_assets() { # $1 = source png, $2 = destination dir
     iconset="$WORK_ROOT/AppIcon.iconset"
     rm -rf "$iconset"
     mkdir -p "$iconset" "$dest"
-    cp "$src/Icon-iOS-Default-16@1x.png" "$iconset/icon_16x16.png"
-    cp "$src/Icon-iOS-Default-16@2x.png" "$iconset/icon_16x16@2x.png"
-    cp "$src/Icon-iOS-Default-32@1x.png" "$iconset/icon_32x32.png"
-    cp "$src/Icon-iOS-Default-32@2x.png" "$iconset/icon_32x32@2x.png"
-    cp "$src/Icon-iOS-Default-128@1x.png" "$iconset/icon_128x128.png"
-    cp "$src/Icon-iOS-Default-128@2x.png" "$iconset/icon_128x128@2x.png"
-    cp "$src/Icon-iOS-Default-256@1x.png" "$iconset/icon_256x256.png"
-    cp "$src/Icon-iOS-Default-256@2x.png" "$iconset/icon_256x256@2x.png"
-    cp "$src/Icon-iOS-Default-512@1x.png" "$iconset/icon_512x512.png"
-    cp "$src/Icon-iOS-Default-1024@1x.png" "$iconset/icon_512x512@2x.png"
+    sips -z 16 16 "$src" --out "$iconset/icon_16x16.png" >/dev/null
+    sips -z 32 32 "$src" --out "$iconset/icon_16x16@2x.png" >/dev/null
+    sips -z 32 32 "$src" --out "$iconset/icon_32x32.png" >/dev/null
+    sips -z 64 64 "$src" --out "$iconset/icon_32x32@2x.png" >/dev/null
+    sips -z 128 128 "$src" --out "$iconset/icon_128x128.png" >/dev/null
+    sips -z 256 256 "$src" --out "$iconset/icon_128x128@2x.png" >/dev/null
+    sips -z 256 256 "$src" --out "$iconset/icon_256x256.png" >/dev/null
+    sips -z 512 512 "$src" --out "$iconset/icon_256x256@2x.png" >/dev/null
+    sips -z 512 512 "$src" --out "$iconset/icon_512x512.png" >/dev/null
+    sips -z 1024 1024 "$src" --out "$iconset/icon_512x512@2x.png" >/dev/null
     iconutil -c icns "$iconset" -o "$dest/AppIcon.icns"
     rm -rf "$iconset"
 }
@@ -118,11 +156,10 @@ build_dmg() { # $1 = arch
     cp "$bin_dir/eddy" "$app/Contents/MacOS/Eddy"
     printf 'APPL????' > "$app/Contents/PkgInfo"
     cp "$WORK_ROOT/AppIcon.icns" "$app/Contents/Resources/"
-    cp "$MENU_ICON_PNG" "$app/Contents/Resources/eddy.png"
+    cp "$MENU_ICON_SOURCE" "$app/Contents/Resources/eddy.png"
     if [ -d "$bin_dir/eddy_eddy.bundle" ]; then
         cp -R "$bin_dir/eddy_eddy.bundle" "$app/Contents/Resources/"
         rm -f "$app/Contents/Resources/eddy_eddy.bundle/logo.png"
-        cp "$MENU_ICON_PNG" "$app/Contents/Resources/eddy_eddy.bundle/eddy.png"
     fi
     if [ -d "$bin_dir/LeafiyUI_LeafiyUI.bundle" ]; then
         cp -R "$bin_dir/LeafiyUI_LeafiyUI.bundle" "$app/Contents/Resources/"
@@ -132,7 +169,7 @@ build_dmg() { # $1 = arch
         echo "error: CFBundleIconName must not be set"
         exit 1
     fi
-    cmp -s "$MENU_ICON_PNG" "$app/Contents/Resources/eddy.png" || { echo "error: menu bar icon does not match $MENU_ICON_PNG"; exit 1; }
+    cmp -s "$MENU_ICON_SOURCE" "$app/Contents/Resources/eddy.png" || { echo "error: menu bar icon does not match $MENU_ICON_SOURCE"; exit 1; }
     if [ "$SIGN_IDENTITY" = "-" ]; then
         codesign --force --sign - "$app"
         if [ -n "$NOTARY_PROFILE" ]; then
@@ -158,10 +195,7 @@ build_dmg() { # $1 = arch
         codesign --verify --verbose=2 "$dmg"
     fi
     if [ -n "$NOTARY_PROFILE" ]; then
-        echo "notarizing $dmg (takes a few minutes)..."
-        xcrun notarytool submit "$dmg" --keychain-profile "$NOTARY_PROFILE" --wait
-        xcrun stapler staple "$dmg"
-        spctl -a -vv -t open --context context:primary-signature "$dmg"
+        notarize_dmg "$dmg"
     fi
     rm -rf "$WORK_ROOT/$arch"
     echo "made $dmg"
@@ -170,7 +204,7 @@ build_dmg() { # $1 = arch
 rm -rf "$WORK_ROOT"
 mkdir -p "$WORK_ROOT" "$ARTIFACT_DIR"
 # App icon: compile the same AppIcon asset catalog Xcode uses.
-compile_app_icon_assets "$APP_ICON_DIR" "$WORK_ROOT"
+compile_app_icon_assets "$APP_ICON_SOURCE" "$WORK_ROOT"
 build_dmg arm64
 build_dmg x86_64
 rm -rf "$WORK_ROOT"
