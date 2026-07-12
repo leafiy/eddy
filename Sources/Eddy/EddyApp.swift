@@ -59,13 +59,33 @@ struct EddyApp: App {
         .defaultSize(width: 640, height: 420)
         .windowResizability(.contentMinSize)
         .commands {
-            // Menu command instead of onPasteCommand: works regardless of
-            // which view has focus.
+            // Menu commands instead of onPasteCommand: they work regardless
+            // of which view has focus. The full pasteboard group is replaced,
+            // so Cut/Copy/Select All must be restored by hand — dropping them
+            // silently killed ⌘C in every text field (e.g. Settings → Share).
+            // Paste is smart: with a text editor focused it pastes text,
+            // otherwise it pastes images into the queue.
             CommandGroup(replacing: .pasteboard) {
-                Button(L("Paste Images")) {
-                    Store.shared.pasteFromClipboard()
+                Button(L("Cut")) {
+                    NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("x", modifiers: .command)
+                Button(L("Copy")) {
+                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("c", modifiers: .command)
+                Button(L("Paste")) {
+                    if NSApp.keyWindow?.firstResponder is NSText {
+                        NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+                    } else {
+                        Store.shared.pasteFromClipboard()
+                    }
                 }
                 .keyboardShortcut("v", modifiers: .command)
+                Button(L("Select All")) {
+                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                }
+                .keyboardShortcut("a", modifiers: .command)
             }
         }
 
@@ -96,17 +116,28 @@ struct EddyApp: App {
 }
 
 private struct EddyMenuBarIcon: View {
-    private static let icon = NSImage.eddyAppIcon()?.leafiyMenuBarSized()
+    /// Composed into a fixed-size NSImage exactly like daisy's menu-bar
+    /// label: the MenuBarExtra label is flattened into the status item,
+    /// which drops SwiftUI frames, so the size must be baked into the
+    /// image itself or the multi-rep .icns renders at its own size.
+    private static let icon: NSImage = {
+        let side = LeafiyDesign.Size.menuBarIcon
+        return NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            if let base = NSImage.eddyAppIcon() {
+                base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            } else if let fallback = NSImage(
+                systemSymbolName: "photo.on.rectangle.angled",
+                accessibilityDescription: "Eddy"
+            ) {
+                fallback.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+            }
+            return true
+        }
+    }()
 
     var body: some View {
-        Group {
-            if let icon = Self.icon {
-                Image(nsImage: icon)
-                    .frame(width: LeafiyDesign.Size.menuBarIcon, height: LeafiyDesign.Size.menuBarIcon)
-            }
-        }
-        .frame(width: LeafiyDesign.Size.menuBarIcon, height: LeafiyDesign.Size.menuBarIcon)
-        .accessibilityLabel("Eddy")
+        Image(nsImage: Self.icon)
+            .accessibilityLabel(Text(verbatim: "Eddy"))
     }
 }
 
