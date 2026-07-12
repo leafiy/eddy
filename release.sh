@@ -13,7 +13,7 @@ set -eu
 cd "$(dirname "$0")"
 
 command -v swift >/dev/null 2>&1 || { echo "error: needs macOS with Xcode command line tools"; exit 1; }
-APP_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
+APP_ICON_SOURCE="eddy.png"
 MENU_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
 APP_SLUG="eddy"
 [ -f "$APP_ICON_SOURCE" ] || { echo "error: $APP_ICON_SOURCE not found"; exit 1; }

@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 
-APP_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
+APP_ICON_SOURCE="eddy.png"
 MENU_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
 [ -f "$APP_ICON_SOURCE" ] || { echo "error: $APP_ICON_SOURCE not found"; exit 1; }
 [ -f "$MENU_ICON_SOURCE" ] || { echo "error: $MENU_ICON_SOURCE not found"; exit 1; }
