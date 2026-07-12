@@ -74,6 +74,12 @@ struct ContentView: View {
                 }
             }
             .leafiyToast(store.toast)
+            .alert(L("Set up Quick Share"), isPresented: $store.needsQuickShareSetup) {
+                Button(L("Open Settings")) { openSettingsWindow() }
+                Button(L("Cancel"), role: .cancel) {}
+            } message: {
+                Text(L("Quick Share uploads compressed files to your own object storage. Add your storage account in Settings → Share first."))
+            }
             .toolbar { toolbarContent }
     }
 
@@ -224,6 +230,7 @@ struct ItemRow: View {
                 .foregroundStyle(.secondary)
             statusColumn
             Text(item.finalBytes.map(Formatters.bytes) ?? "—")
+            shareControl
         }
         .font(.body.monospacedDigit())
         .padding(.vertical, LeafiyDesign.Spacing.xs)
@@ -232,6 +239,11 @@ struct ItemRow: View {
             NSWorkspace.shared.open(item.url)
         }
         .contextMenu {
+            Button(L("Quick Share")) {
+                Store.shared.quickShare(item.id)
+            }
+            .disabled(!item.isShareable || item.isSharing)
+            Divider()
             Button(L("Show in Finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
             }
@@ -244,6 +256,28 @@ struct ItemRow: View {
                 Store.shared.removeItem(item.id)
             }
         }
+    }
+
+    /// Quick Share button; spins while the upload is in flight. Fixed width
+    /// so rows stay column-aligned whether or not the item is shareable yet.
+    @ViewBuilder private var shareControl: some View {
+        Group {
+            if item.isSharing {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Button {
+                    Store.shared.quickShare(item.id)
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!item.isShareable)
+                .opacity(item.isShareable ? 1 : 0.3)
+                .help(L("Quick Share — upload the compressed file and copy the public link"))
+            }
+        }
+        .frame(width: LeafiyDesign.Size.rowIcon)
     }
 
     private var thumbnail: some View {

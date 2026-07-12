@@ -81,6 +81,7 @@ struct EddyApp: App {
         Settings {
             SettingsScaffold {
                 EddyGeneralSettingsPane()
+                EddyShareSettingsPane()
                 AboutPane(
                     tagline: L("Drag-and-drop image compression — files are optimized in place."),
                     copyright: L("© 2026 Leafiy")
@@ -180,7 +181,7 @@ private struct EddyMenuContent: View {
 /// `SettingsLink` doesn't activate the app from a menu-bar click, so the
 /// window opened behind whatever app was frontmost.
 @MainActor
-private func openSettingsWindow() {
+func openSettingsWindow() {
     NSApp.activate(ignoringOtherApps: true)
     if let appMenu = NSApp.mainMenu?.items.first?.submenu,
        let index = appMenu.items.firstIndex(where: {

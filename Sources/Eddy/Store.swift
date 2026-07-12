@@ -20,10 +20,14 @@ struct ImageItem: Identifiable {
     var status: Status = .pending
     /// "4032×3024 → 1080×810" once processed; proof of the resize setting.
     var dimensions: String?
+    /// Quick Share upload in progress for this row.
+    var isSharing = false
 
     var filename: String { url.lastPathComponent }
 
     var isInFlight: Bool { status == .pending || status == .processing }
+
+    var isShareable: Bool { status == .done || status == .unchanged }
 
     var savedFraction: Double? {
         guard let finalBytes, originalBytes > 0 else { return nil }
@@ -37,6 +41,9 @@ final class Store: ObservableObject {
 
     @Published var items: [ImageItem] = []
     @Published var toast: String?
+    /// Quick Share was invoked without a configured storage account;
+    /// ContentView presents the setup prompt.
+    @Published var needsQuickShareSetup = false
 
     private var toastTask: Task<Void, Never>?
     private var hadPendingWork = false
@@ -57,6 +64,35 @@ final class Store: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
             guard !Task.isCancelled else { return }
             toast = nil
+        }
+    }
+
+    // MARK: - Quick Share
+
+    /// Uploads the item's (compressed, in-place) file to the configured
+    /// object storage and copies the public link. Without a configured
+    /// account, raises the setup prompt instead.
+    func quickShare(_ id: UUID) {
+        guard let item = items.first(where: { $0.id == id }), !item.isSharing else { return }
+        let settings = QuickShareSettings.load()
+        guard settings.isConfigured else {
+            needsQuickShareSetup = true
+            return
+        }
+        update(id) { $0.isSharing = true }
+        let fileURL = item.url
+        Task { [weak self] in
+            do {
+                let link = try await QuickShareService.share(fileURL: fileURL, settings: settings)
+                let pasteboard = NSPasteboard.general
+                pasteboard.clearContents()
+                pasteboard.setString(link, forType: .string)
+                self?.showToast(L("Public link copied to clipboard."), seconds: 4)
+            } catch {
+                NSLog("Eddy quick share failed: %@", String(describing: error))
+                self?.showToast(error.localizedDescription, seconds: 5)
+            }
+            self?.update(id) { $0.isSharing = false }
         }
     }
 

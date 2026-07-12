@@ -57,3 +57,36 @@
 "Keep original format" = "保持原格式";
 "no JPEG encoder available on this macOS" = "此 macOS 上没有可用的 JPEG 编码器";
 "no encoder available for .%@ on this macOS" = "此 macOS 上没有可用于 .%@ 的编码器";
+
+/* Quick Share */
+"Share" = "分享";
+"Quick Share" = "快速分享";
+"Set up Quick Share" = "设置快速分享";
+"Open Settings" = "打开设置";
+"Cancel" = "取消";
+"Quick Share uploads compressed files to your own object storage. Add your storage account in Settings → Share first." = "快速分享会把压缩后的文件上传到你自己的对象存储。请先在“设置 → 分享”中填写存储账号。";
+"Quick Share — upload the compressed file and copy the public link" = "快速分享——上传压缩后的文件并复制公网链接";
+"Provider" = "服务商";
+"S3-compatible" = "S3 兼容";
+"Alibaba Cloud OSS" = "阿里云 OSS";
+"Tencent Cloud COS" = "腾讯云 COS";
+"AWS S3" = "AWS S3";
+"Cloudflare R2" = "Cloudflare R2";
+"Quick Share uploads the compressed file to your public object storage and copies the public URL to the clipboard." = "快速分享会将压缩后的文件上传到你的公开对象存储，并把公网 URL 复制到剪贴板。";
+"Storage account" = "存储账号";
+"Endpoint URL" = "Endpoint URL";
+"Region" = "Region";
+"Bucket" = "Bucket";
+"Access Key" = "Access Key";
+"Secret Key" = "Secret Key";
+"Public URL" = "公网 URL";
+"Object prefix" = "对象前缀";
+"Eddy builds the public URL from Endpoint, Bucket, Object prefix, and the generated filename." = "Eddy 会用 Endpoint、Bucket、对象前缀和自动生成的文件名拼出公网 URL。";
+"Quick guide" = "快速指南";
+"1. Create a bucket or prefix that is public-read.\n2. Create a least-privileged key that can PutObject only to that bucket or prefix.\n3. Fill Endpoint, Region, Bucket, Access Key, Secret Key, and Object prefix.\nExamples: Alibaba OSS endpoint https://oss-cn-hangzhou.aliyuncs.com or https://<bucket>.oss-cn-hangzhou.aliyuncs.com; Tencent COS endpoint https://cos.ap-shanghai.myqcloud.com or https://<bucket>.cos.ap-shanghai.myqcloud.com; AWS S3 endpoint https://s3.us-west-2.amazonaws.com; Cloudflare R2 endpoint https://<account-id>.r2.cloudflarestorage.com with region auto." = "1. 创建一个 public-read 的 bucket 或前缀。\n2. 创建一个最小权限密钥，只允许向这个 bucket 或前缀 PutObject。\n3. 填写 Endpoint、Region、Bucket、Access Key、Secret Key 和对象前缀。\n示例：阿里云 OSS endpoint https://oss-cn-hangzhou.aliyuncs.com 或 https://<bucket>.oss-cn-hangzhou.aliyuncs.com；腾讯云 COS endpoint https://cos.ap-shanghai.myqcloud.com 或 https://<bucket>.cos.ap-shanghai.myqcloud.com；AWS S3 endpoint https://s3.us-west-2.amazonaws.com；Cloudflare R2 endpoint https://<account-id>.r2.cloudflarestorage.com，region 填 auto。";
+"Set up Quick Share storage in Settings first." = "请先在设置中配置快速分享存储。";
+"The Quick Share endpoint URL is invalid." = "快速分享 Endpoint URL 无效。";
+"Quick Share can’t read the file: %@" = "快速分享无法读取文件：%@";
+"Quick Share upload failed with HTTP %d." = "快速分享上传失败，HTTP %d。";
+"Quick Share upload failed with HTTP %1$d: %2$@" = "快速分享上传失败，HTTP %1$d：%2$@";
+"Public link copied to clipboard." = "公网链接已复制到剪贴板。";
