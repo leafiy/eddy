@@ -13,17 +13,9 @@ let package = Package(
         .package(url: "https://github.com/SDWebImage/libavif-Xcode.git", from: "1.0.0"),
     ],
     targets: [
-        // pngquant's quantization engine, vendored (GPLv3; see COPYRIGHT).
-        .target(
-            name: "libimagequant",
-            path: "Vendor/libimagequant",
-            exclude: ["COPYRIGHT"],
-            publicHeadersPath: "include"
-        ),
         .executableTarget(
             name: "eddy",
             dependencies: [
-                "libimagequant",
                 .product(name: "LeafiyUI", package: "leafiy-ui"),
                 .product(name: "LeafiyUICore", package: "leafiy-ui"),
                 .product(name: "libwebp", package: "libwebp-Xcode"),
@@ -31,6 +23,10 @@ let package = Package(
             ],
             path: "Sources/Eddy",
             resources: [.process("Resources")]
+        ),
+        .testTarget(
+            name: "EddyTests",
+            dependencies: ["eddy"]
         )
     ]
 )

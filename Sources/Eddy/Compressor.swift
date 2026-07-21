@@ -58,7 +58,7 @@ enum SaveFormat: String, CaseIterable, Identifiable {
 }
 
 /// Fully self-contained pipeline — every engine is compiled into the app:
-///   PNG   bundled libimagequant (pngquant's engine) + own indexed-PNG writer
+///   PNG   Apple ImageIO lossless encoder
 ///   JPEG  ImageIO progressive re-encode AND lossless metadata strip; smaller wins
 ///   WebP  bundled libwebp + lossless RIFF metadata strip; smaller wins
 ///   AVIF  bundled libavif + libaom
@@ -221,8 +221,8 @@ enum Compressor {
         maxWidth > 0 && effectivePixelWidth(of: fileURL) > maxWidth
     }
 
-    /// pngquant-style lossy quantization; keep-if-smaller upstream guards the
-    /// rare case where an already tiny palette PNG doesn't benefit.
+    /// Lossless PNG re-encode through ImageIO; keep-if-smaller upstream guards
+    /// the rare case where an already optimized PNG does not benefit.
     private static func recompressPNG(_ fileURL: URL, _ quality: Double, _ maxWidth: Int, _ tempDir: URL) throws -> URL {
         let frame = try decodedFrame(fileURL, maxWidth: maxWidth)
         let encoded = try PNGCoder.quantizedPNG(from: frame, quality: quality)

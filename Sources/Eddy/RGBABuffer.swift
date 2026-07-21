@@ -2,14 +2,14 @@ import CoreGraphics
 import Foundation
 
 /// Straight-alpha, tightly packed RGBA8 pixels rendered from a CGImage.
-/// Shared input format for the libimagequant / libwebp / libavif encoders.
+/// Shared input format for the libwebp / libavif encoders.
 /// The backing CGContext owns the memory; keep the buffer alive while using
 /// `pixels`.
 final class RGBABuffer {
     let width: Int
     let height: Int
     /// Always exactly `width * 4` — the context is created unpadded so the
-    /// buffer can be handed to stride-less APIs (libimagequant) directly.
+    /// buffer can be handed to stride-less image encoder APIs directly.
     let bytesPerRow: Int
     private let context: CGContext
 

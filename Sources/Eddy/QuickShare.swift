@@ -25,9 +25,8 @@ enum QuickShareProvider: String, CaseIterable {
     }
 }
 
-/// Quick Share storage account. Persisted as individual UserDefaults keys,
-/// matching eddy's other settings (@AppStorage in the Settings pane, direct
-/// reads at action time).
+/// Quick Share storage account. Non-secret fields are persisted as individual
+/// UserDefaults keys; credentials are kept in the login Keychain.
 struct QuickShareSettings {
     enum Keys {
         static let provider = "quickShareProvider"
@@ -50,15 +49,61 @@ struct QuickShareSettings {
     static let defaultKeyPrefix = "eddy"
 
     static func load(from defaults: UserDefaults = .standard) -> QuickShareSettings {
-        QuickShareSettings(
+        let legacyAccessKey = defaults.string(forKey: Keys.accessKeyID) ?? ""
+        let legacySecretKey = defaults.string(forKey: Keys.secretAccessKey) ?? ""
+        var accessKey = legacyAccessKey
+        var secretKey = legacySecretKey
+        do {
+            if let stored = try KeychainSecretStore.shared.read(account: Keys.accessKeyID) {
+                accessKey = stored
+            } else if !legacyAccessKey.isEmpty {
+                try KeychainSecretStore.shared.write(legacyAccessKey, account: Keys.accessKeyID)
+            }
+            if let stored = try KeychainSecretStore.shared.read(account: Keys.secretAccessKey) {
+                secretKey = stored
+            } else if !legacySecretKey.isEmpty {
+                try KeychainSecretStore.shared.write(legacySecretKey, account: Keys.secretAccessKey)
+            }
+            defaults.removeObject(forKey: Keys.accessKeyID)
+            defaults.removeObject(forKey: Keys.secretAccessKey)
+        } catch {
+            NSLog("Eddy: failed to access Keychain: %@", String(describing: error))
+            accessKey = legacyAccessKey
+            secretKey = legacySecretKey
+        }
+        return QuickShareSettings(
             provider: QuickShareProvider(rawValue: defaults.string(forKey: Keys.provider) ?? "") ?? .s3Compatible,
             endpointURL: defaults.string(forKey: Keys.endpointURL) ?? "",
             region: defaults.string(forKey: Keys.region) ?? "",
             bucket: defaults.string(forKey: Keys.bucket) ?? "",
-            accessKeyID: defaults.string(forKey: Keys.accessKeyID) ?? "",
-            secretAccessKey: defaults.string(forKey: Keys.secretAccessKey) ?? "",
+            accessKeyID: accessKey,
+            secretAccessKey: secretKey,
             keyPrefix: defaults.string(forKey: Keys.keyPrefix) ?? defaultKeyPrefix
         )
+    }
+
+    static func save(_ settings: QuickShareSettings, to defaults: UserDefaults = .standard) {
+        defaults.set(settings.provider.rawValue, forKey: Keys.provider)
+        defaults.set(settings.endpointURL, forKey: Keys.endpointURL)
+        defaults.set(settings.region, forKey: Keys.region)
+        defaults.set(settings.bucket, forKey: Keys.bucket)
+        defaults.set(settings.keyPrefix, forKey: Keys.keyPrefix)
+        do {
+            if settings.accessKeyID.isEmpty {
+                try KeychainSecretStore.shared.remove(account: Keys.accessKeyID)
+            } else {
+                try KeychainSecretStore.shared.write(settings.accessKeyID, account: Keys.accessKeyID)
+            }
+            if settings.secretAccessKey.isEmpty {
+                try KeychainSecretStore.shared.remove(account: Keys.secretAccessKey)
+            } else {
+                try KeychainSecretStore.shared.write(settings.secretAccessKey, account: Keys.secretAccessKey)
+            }
+            defaults.removeObject(forKey: Keys.accessKeyID)
+            defaults.removeObject(forKey: Keys.secretAccessKey)
+        } catch {
+            NSLog("Eddy: failed to save Keychain credentials: %@", String(describing: error))
+        }
     }
 
     var isConfigured: Bool {
@@ -352,9 +397,15 @@ struct EddyShareSettingsPane: View {
     @AppStorage(QuickShareSettings.Keys.endpointURL) private var endpointURL = ""
     @AppStorage(QuickShareSettings.Keys.region) private var region = ""
     @AppStorage(QuickShareSettings.Keys.bucket) private var bucket = ""
-    @AppStorage(QuickShareSettings.Keys.accessKeyID) private var accessKeyID = ""
-    @AppStorage(QuickShareSettings.Keys.secretAccessKey) private var secretAccessKey = ""
+    @State private var accessKeyID = ""
+    @State private var secretAccessKey = ""
     @AppStorage(QuickShareSettings.Keys.keyPrefix) private var keyPrefix = QuickShareSettings.defaultKeyPrefix
+
+    init() {
+        let settings = QuickShareSettings.load()
+        _accessKeyID = State(initialValue: settings.accessKeyID)
+        _secretAccessKey = State(initialValue: settings.secretAccessKey)
+    }
 
     private var providerBinding: Binding<QuickShareProvider> {
         Binding {
@@ -400,6 +451,27 @@ struct EddyShareSettingsPane: View {
                     .textSelection(.enabled)
             }
         }
+        .onAppear {
+            let settings = QuickShareSettings.load()
+            accessKeyID = settings.accessKeyID
+            secretAccessKey = settings.secretAccessKey
+        }
+        .onChange(of: accessKeyID) { _, _ in persistCredentials() }
+        .onChange(of: secretAccessKey) { _, _ in persistCredentials() }
+    }
+
+    private func persistCredentials() {
+        QuickShareSettings.save(
+            QuickShareSettings(
+                provider: QuickShareProvider(rawValue: providerRaw) ?? .s3Compatible,
+                endpointURL: endpointURL,
+                region: region,
+                bucket: bucket,
+                accessKeyID: accessKeyID,
+                secretAccessKey: secretAccessKey,
+                keyPrefix: keyPrefix
+            )
+        )
     }
 }
 

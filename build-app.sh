@@ -59,7 +59,6 @@ fi
 if [ -d "$BIN_DIR/LeafiyUI_LeafiyUI.bundle" ]; then
     cp -R "$BIN_DIR/LeafiyUI_LeafiyUI.bundle" "$APP/Contents/Resources/"
 fi
-
 [ ! -e "$APP/Contents/Resources/Assets.car" ] || { echo "error: Assets.car must not be bundled"; exit 1; }
 if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$APP/Contents/Info.plist" >/dev/null 2>&1; then
     echo "error: CFBundleIconName must not be set"
