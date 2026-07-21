@@ -116,14 +116,12 @@ struct EddyApp: App {
 }
 
 private struct EddyMenuBarIcon: View {
-    /// Composed into a fixed-size NSImage exactly like daisy's menu-bar
-    /// label: the MenuBarExtra label is flattened into the status item,
-    /// which drops SwiftUI frames, so the size must be baked into the
-    /// image itself or the multi-rep .icns renders at its own size.
+    /// MenuBarExtra flattens its label into the status item, so compose the
+    /// dedicated transparent artwork into a fixed 18-point image first.
     private static let icon: NSImage = {
         let side = LeafiyDesign.Size.menuBarIcon
         return NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
-            if let base = NSImage.eddyAppIcon() {
+            if let base = NSImage.eddyIcon() {
                 base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
             } else if let fallback = NSImage(
                 systemSymbolName: "photo.on.rectangle.angled",
@@ -142,21 +140,6 @@ private struct EddyMenuBarIcon: View {
 }
 
 private extension NSImage {
-    static func eddyAppIcon() -> NSImage? {
-        if let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
-           let image = NSImage(contentsOf: url) {
-            image.accessibilityDescription = "Eddy"
-            return image
-        }
-
-        if let image = NSApplication.shared.applicationIconImage,
-           !image.representations.isEmpty {
-            image.accessibilityDescription = "Eddy"
-            return image
-        }
-        return nil
-    }
-
     static func eddyIcon() -> NSImage? {
         for bundle in [eddyResources, Bundle.main] {
             guard let url = bundle.url(forResource: "eddy", withExtension: "png"),

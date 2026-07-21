@@ -16,9 +16,11 @@ cd "$(dirname "$0")"
 command -v swift >/dev/null 2>&1 || { echo "error: needs macOS with Xcode command line tools"; exit 1; }
 APP_ICON_SOURCE="eddy.png"
 MENU_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
+ICON_COMPILER="../leafiy-ui/scripts/compile-macos-app-icon.sh"
 APP_SLUG="eddy"
 [ -f "$APP_ICON_SOURCE" ] || { echo "error: $APP_ICON_SOURCE not found"; exit 1; }
 [ -f "$MENU_ICON_SOURCE" ] || { echo "error: $MENU_ICON_SOURCE not found"; exit 1; }
+[ -x "$ICON_COMPILER" ] || { echo "error: shared icon compiler not found: $ICON_COMPILER"; exit 1; }
 
 increment_version() {
     printf '%s\n' "$1" | awk -F. '
@@ -192,23 +194,7 @@ notarize_dmg() { # $1 = dmg path
 }
 
 compile_app_icon_assets() { # $1 = source png, $2 = destination dir
-    src="$1"
-    dest="$2"
-    iconset="$WORK_ROOT/AppIcon.iconset"
-    rm -rf "$iconset"
-    mkdir -p "$iconset" "$dest"
-    sips -z 16 16 "$src" --out "$iconset/icon_16x16.png" >/dev/null
-    sips -z 32 32 "$src" --out "$iconset/icon_16x16@2x.png" >/dev/null
-    sips -z 32 32 "$src" --out "$iconset/icon_32x32.png" >/dev/null
-    sips -z 64 64 "$src" --out "$iconset/icon_32x32@2x.png" >/dev/null
-    sips -z 128 128 "$src" --out "$iconset/icon_128x128.png" >/dev/null
-    sips -z 256 256 "$src" --out "$iconset/icon_128x128@2x.png" >/dev/null
-    sips -z 256 256 "$src" --out "$iconset/icon_256x256.png" >/dev/null
-    sips -z 512 512 "$src" --out "$iconset/icon_256x256@2x.png" >/dev/null
-    sips -z 512 512 "$src" --out "$iconset/icon_512x512.png" >/dev/null
-    sips -z 1024 1024 "$src" --out "$iconset/icon_512x512@2x.png" >/dev/null
-    iconutil -c icns "$iconset" -o "$dest/AppIcon.icns"
-    rm -rf "$iconset"
+    "$ICON_COMPILER" "$1" "$2" "$WORK_ROOT/AppIconAssets"
 }
 
 build_dmg() { # $1 = arch
@@ -228,7 +214,7 @@ build_dmg() { # $1 = arch
     }
     cp "$bin_dir/eddy" "$app/Contents/MacOS/Eddy"
     printf 'APPL????' > "$app/Contents/PkgInfo"
-    cp "$WORK_ROOT/AppIcon.icns" "$app/Contents/Resources/"
+    cp "$WORK_ROOT/AppIcon.icns" "$WORK_ROOT/Assets.car" "$app/Contents/Resources/"
     cp "$MENU_ICON_SOURCE" "$app/Contents/Resources/eddy.png"
     if [ -d "$bin_dir/eddy_eddy.bundle" ]; then
         cp -R "$bin_dir/eddy_eddy.bundle" "$app/Contents/Resources/"
@@ -237,11 +223,9 @@ build_dmg() { # $1 = arch
     if [ -d "$bin_dir/LeafiyUI_LeafiyUI.bundle" ]; then
         cp -R "$bin_dir/LeafiyUI_LeafiyUI.bundle" "$app/Contents/Resources/"
     fi
-    [ ! -e "$app/Contents/Resources/Assets.car" ] || { echo "error: Assets.car must not be bundled"; exit 1; }
-    if /usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist" >/dev/null 2>&1; then
-        echo "error: CFBundleIconName must not be set"
-        exit 1
-    fi
+    [ -f "$app/Contents/Resources/AppIcon.icns" ] || { echo "error: AppIcon.icns is missing"; exit 1; }
+    [ -f "$app/Contents/Resources/Assets.car" ] || { echo "error: Assets.car is missing"; exit 1; }
+    [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist")" = "AppIcon" ] || { echo "error: CFBundleIconName must be AppIcon"; exit 1; }
     cmp -s "$MENU_ICON_SOURCE" "$app/Contents/Resources/eddy.png" || { echo "error: menu bar icon does not match $MENU_ICON_SOURCE"; exit 1; }
     if [ "$SIGN_IDENTITY" = "-" ]; then
         codesign --force --sign - "$app"
