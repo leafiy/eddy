@@ -89,7 +89,7 @@ HEAD_SHA=$(git rev-parse HEAD)
 
 GITEA_URL="${GITEA_URL:-http://192.168.52.4:5010}"
 OWNER_REPO=$(git remote get-url origin | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')
-BUILD_ROOT="${BUILD_ROOT:-"$PWD/build"}"
+BUILD_ROOT="${BUILD_ROOT:-"$PWD/build.noindex"}"
 WORK_ROOT="${RELEASE_WORK_ROOT:-"$BUILD_ROOT/release-work/$VERSION"}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-"$BUILD_ROOT/release/$VERSION"}"
 API="$GITEA_URL/api/v1/repos/$OWNER_REPO"

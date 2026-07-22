@@ -1,5 +1,6 @@
 .build/
 eddy.app/
 build/
+build.noindex/
 *.iconset/
 .DS_Store

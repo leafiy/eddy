@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds Eddy.app outside the repository.
+# Builds Eddy.app in an ignored, Spotlight-excluded build directory.
 # Requires macOS with the Xcode command line tools (xcode-select --install).
 set -eu
 cd "$(dirname "$0")"
@@ -24,12 +24,15 @@ fi
 SCRATCH_PATH="${SCRATCH_PATH:-"${TMPDIR%/}/leafiy-swift-builds/eddy"}"
 swift build -c release $ARCH_FLAGS --scratch-path "$SCRATCH_PATH"
 BIN_DIR=$(swift build -c release $ARCH_FLAGS --scratch-path "$SCRATCH_PATH" --show-bin-path)
+BUILD_ROOT="${BUILD_ROOT:-"$PWD/build.noindex"}"
+APP_OUTPUT_DIR="${APP_OUTPUT_DIR:-"$BUILD_ROOT/app"}"
+mkdir -p "$BUILD_ROOT"
 
 compile_app_icon_assets() { # $1 = source png, $2 = destination resources dir
     "$ICON_COMPILER" "$1" "$2" "${TMPDIR%/}/leafiy-icon-builds/eddy"
 }
 
-APP="Eddy.app"
+APP="$APP_OUTPUT_DIR/Eddy.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Info.plist "$APP/Contents/Info.plist"
@@ -63,4 +66,4 @@ else
     codesign --force --sign - "$APP"
 fi
 
-echo "Done: $(pwd)/$APP"
+echo "Done: $APP"
