@@ -49,17 +49,17 @@ final class HistoryStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
 
         let store = HistoryStore(fileURL: fileURL)
-        for index in 0...(HistoryStore.maxEntries + 4) {
+        for index in 0...(HistoryDocument.maxEntries + 4) {
             store.record(entry("file-\(index)"))
         }
 
-        XCTAssertEqual(store.entries.count, HistoryStore.maxEntries)
-        XCTAssertEqual(store.entries.first?.filename, "file-\(HistoryStore.maxEntries + 4).png")
+        XCTAssertEqual(store.entries.count, HistoryDocument.maxEntries)
+        XCTAssertEqual(store.entries.first?.filename, "file-\(HistoryDocument.maxEntries + 4).png")
         // The oldest overflowed entries are gone.
         XCTAssertFalse(store.entries.contains { $0.filename == "file-0.png" })
 
         let reloaded = HistoryStore(fileURL: fileURL)
-        XCTAssertEqual(reloaded.entries.count, HistoryStore.maxEntries)
+        XCTAssertEqual(reloaded.entries.count, HistoryDocument.maxEntries)
     }
 
     func testLoadTrimsOversizedPersistedDocument() throws {
@@ -67,7 +67,7 @@ final class HistoryStoreTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
 
         let oversized = HistoryDocument(
-            entries: (0...(HistoryStore.maxEntries + 9)).map { entry("file-\($0)") }
+            entries: (0...(HistoryDocument.maxEntries + 9)).map { entry("file-\($0)") }
         )
         try FileManager.default.createDirectory(
             at: fileURL.deletingLastPathComponent(),
@@ -76,7 +76,7 @@ final class HistoryStoreTests: XCTestCase {
         try JSONEncoder().encode(oversized).write(to: fileURL)
 
         let store = HistoryStore(fileURL: fileURL)
-        XCTAssertEqual(store.entries.count, HistoryStore.maxEntries)
+        XCTAssertEqual(store.entries.count, HistoryDocument.maxEntries)
         // normalized() keeps the head of the list — the newest entries.
         XCTAssertEqual(store.entries.first?.filename, "file-0.png")
     }

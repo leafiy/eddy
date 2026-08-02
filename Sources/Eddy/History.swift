@@ -44,14 +44,17 @@ struct HistoryEntry: Identifiable, Codable, Equatable {
 /// read and written through the Base Library Settings Store so it shares the
 /// same atomic-write and corrupt-file-falls-back-to-defaults behavior.
 struct HistoryDocument: Codable, Equatable, LeafiyAppSettings {
+    /// Local storage cap; the newest entries win.
+    static let maxEntries = 500
+
     var entries: [HistoryEntry] = []
 
     static var defaults: HistoryDocument { HistoryDocument() }
 
     func normalized() -> HistoryDocument {
         var normalized = self
-        if normalized.entries.count > HistoryStore.maxEntries {
-            normalized.entries = Array(normalized.entries.prefix(HistoryStore.maxEntries))
+        if normalized.entries.count > Self.maxEntries {
+            normalized.entries = Array(normalized.entries.prefix(Self.maxEntries))
         }
         return normalized
     }
@@ -60,9 +63,6 @@ struct HistoryDocument: Codable, Equatable, LeafiyAppSettings {
 @MainActor
 final class HistoryStore: ObservableObject {
     static let shared = HistoryStore()
-
-    /// Local storage cap; the newest entries win.
-    static let maxEntries = 500
 
     @Published private(set) var entries: [HistoryEntry]
 
@@ -86,8 +86,8 @@ final class HistoryStore: ObservableObject {
 
     func record(_ entry: HistoryEntry) {
         entries.insert(entry, at: 0)
-        if entries.count > Self.maxEntries {
-            entries.removeLast(entries.count - Self.maxEntries)
+        if entries.count > HistoryDocument.maxEntries {
+            entries.removeLast(entries.count - HistoryDocument.maxEntries)
         }
         persist()
     }
