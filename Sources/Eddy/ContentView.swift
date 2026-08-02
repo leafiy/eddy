@@ -36,13 +36,9 @@ struct ResizeMaxWidthOption: Identifiable {
 
 struct ContentView: View {
     @ObservedObject private var store = Store.shared
-    @AppStorage("compressionQuality") private var qualityPercent = 80.0
-    @AppStorage("resizeMaxWidth") private var resizeMaxWidth = 0
-    @AppStorage("defaultSaveFormat") private var saveFormatRaw = SaveFormat.keep.rawValue
+    @ObservedObject var settingsStore: SettingsStore
     @State private var isDropTargeted = false
     @State private var showingOpenPanel = false
-
-    private var saveFormat: SaveFormat { SaveFormat(rawValue: saveFormatRaw) ?? .keep }
 
     private enum Metrics {
         /// Fixed slider width keeps the quality/size strip one compact line
@@ -54,7 +50,8 @@ struct ContentView: View {
         content
             .frame(minWidth: LeafiyDesign.Size.mainWindowMinWidth, minHeight: LeafiyDesign.Size.mainWindowMinHeight)
             .dropDestination(for: URL.self) { urls, _ in
-                store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth, format: saveFormat)
+                let options = settingsStore.processingOptions
+                store.add(urls: urls, quality: options.quality, maxWidth: options.maxWidth, format: options.format)
                 return true
             } isTargeted: { isDropTargeted = $0 }
             .fileImporter(
@@ -63,7 +60,8 @@ struct ContentView: View {
                 allowsMultipleSelection: true
             ) { result in
                 if case .success(let urls) = result {
-                    store.add(urls: urls, quality: qualityPercent / 100, maxWidth: resizeMaxWidth, format: saveFormat)
+                    let options = settingsStore.processingOptions
+                    store.add(urls: urls, quality: options.quality, maxWidth: options.maxWidth, format: options.format)
                 }
             }
             .overlay {
@@ -106,9 +104,9 @@ struct ContentView: View {
     private var settingsBar: some View {
         ControlBar {
             settingControl(L("Quality")) {
-                Slider(value: $qualityPercent, in: 10...100, step: 5)
+                Slider(value: qualityBinding, in: 10...100, step: 5)
                     .frame(width: Metrics.qualitySliderWidth)
-                Text("\(Int(qualityPercent))%")
+                Text("\(Int(settingsStore.settings.compressionQuality))%")
                     .monospacedDigit()
             }
             .help(L("Lossy quality for JPEG/WebP/AVIF/HEIC. Applies to newly dropped files."))
@@ -121,7 +119,7 @@ struct ContentView: View {
                         sizeOption(option)
                     }
                 } label: {
-                    Text(ResizeMaxWidthOption.title(for: resizeMaxWidth))
+                    Text(ResizeMaxWidthOption.title(for: settingsStore.settings.resizeMaxWidth))
                 }
                 .fixedSize()
             }
@@ -149,14 +147,21 @@ struct ContentView: View {
 
     private func sizeOption(_ option: ResizeMaxWidthOption) -> some View {
         Button {
-            resizeMaxWidth = option.width
+            settingsStore.update { $0.resizeMaxWidth = option.width }
         } label: {
-            if resizeMaxWidth == option.width {
+            if settingsStore.settings.resizeMaxWidth == option.width {
                 Label(option.title, systemImage: "checkmark")
             } else {
                 Text(option.title)
             }
         }
+    }
+
+    private var qualityBinding: Binding<Double> {
+        Binding(
+            get: { settingsStore.settings.compressionQuality },
+            set: { newValue in settingsStore.update { $0.compressionQuality = newValue } }
+        )
     }
 
     private var emptyHint: some View {

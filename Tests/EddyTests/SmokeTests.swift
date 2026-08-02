@@ -3,16 +3,7 @@ import XCTest
 
 final class SmokeTests: XCTestCase {
     func testQuickShareDefaultsAreNotConfigured() {
-        let settings = QuickShareSettings(
-            provider: .s3Compatible,
-            endpointURL: "",
-            region: "",
-            bucket: "",
-            accessKeyID: "",
-            secretAccessKey: "",
-            keyPrefix: "eddy"
-        )
-        XCTAssertFalse(settings.isConfigured)
+        XCTAssertFalse(AppSettings.defaults.quickShare.isConfigured)
     }
 
     func testSaveFormatValuesAreStable() {

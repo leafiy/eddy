@@ -26,7 +26,10 @@ let package = Package(
         ),
         .testTarget(
             name: "EddyTests",
-            dependencies: ["eddy"]
+            dependencies: [
+                "eddy",
+                .product(name: "LeafiyUICore", package: "leafiy-ui"),
+            ]
         )
     ]
 )

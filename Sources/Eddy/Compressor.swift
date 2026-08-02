@@ -32,7 +32,7 @@ struct CompressionOutcome {
 /// Output format for processed files. `keep` re-encodes in the original
 /// format; `png`/`jpeg` convert files of other formats, replacing the
 /// original next to where it lived.
-enum SaveFormat: String, CaseIterable, Identifiable {
+enum SaveFormat: String, CaseIterable, Identifiable, Codable {
     case keep
     case png
     case jpeg

@@ -20,7 +20,7 @@ Eddy can upload a finished image to your own compatible object-storage account a
 ## Privacy
 
 - Images are processed locally on your Mac
-- Storage credentials are kept in the macOS login Keychain
+- Storage credentials are saved as plaintext in Eddy's local settings file
 - Eddy does not collect your images or account credentials
 
 ## System Requirements

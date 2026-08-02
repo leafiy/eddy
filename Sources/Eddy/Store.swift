@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import LeafiyUICore
 import SwiftUI
 
 struct ImageItem: Identifiable {
@@ -74,7 +75,7 @@ final class Store: ObservableObject {
     /// account, raises the setup prompt instead.
     func quickShare(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id }), !item.isSharing else { return }
-        let settings = QuickShareSettings.load()
+        let settings = SettingsStore.shared.settings.quickShare
         guard settings.isConfigured else {
             needsQuickShareSetup = true
             return
@@ -103,9 +104,10 @@ final class Store: ObservableObject {
     /// in Downloads and compressed there.
     func pasteFromClipboard() {
         let pasteboard = NSPasteboard.general
-        let quality = (UserDefaults.standard.object(forKey: "compressionQuality") as? Double ?? 80) / 100
-        let maxWidth = UserDefaults.standard.integer(forKey: "resizeMaxWidth")
-        let format = SaveFormat(rawValue: UserDefaults.standard.string(forKey: "defaultSaveFormat") ?? "") ?? .keep
+        let options = SettingsStore.shared.processingOptions
+        let quality = options.quality
+        let maxWidth = options.maxWidth
+        let format = options.format
 
         if let urls = pasteboard.readObjects(
                forClasses: [NSURL.self],

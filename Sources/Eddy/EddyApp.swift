@@ -3,6 +3,7 @@ import LeafiyUICore
 import SwiftUI
 import LeafiyUI
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         SoftwareUpdateController.shared.startAutomaticCheck()
@@ -18,44 +19,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Files dropped on the Dock icon or opened via "Open With".
     func application(_ application: NSApplication, open urls: [URL]) {
-        let percent = UserDefaults.standard.object(forKey: "compressionQuality") as? Double ?? 80
-        let maxWidth = UserDefaults.standard.integer(forKey: "resizeMaxWidth")
-        let format = SaveFormat(rawValue: UserDefaults.standard.string(forKey: "defaultSaveFormat") ?? "") ?? .keep
-        Task { @MainActor in
-            Store.shared.add(urls: urls, quality: percent / 100, maxWidth: maxWidth, format: format)
-        }
+        let options = SettingsStore.shared.processingOptions
+        Store.shared.add(urls: urls, quality: options.quality, maxWidth: options.maxWidth, format: options.format)
     }
 }
 
 @main
 struct EddyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @AppStorage("appLanguage") private var languageRaw = AppLanguage.system.rawValue
+    @StateObject private var settingsStore = SettingsStore.shared
 
     init() {
-        LeafiyLocalization.language = Self.language(from: UserDefaults.standard.string(forKey: "appLanguage"))
+        LeafiyLocalization.language = SettingsStore.persistedAppLanguage()
     }
 
     private var appLanguage: AppLanguage {
-        Self.language(from: languageRaw)
+        settingsStore.appLanguage
     }
 
-    private static func language(from rawValue: String?) -> AppLanguage {
-        AppLanguage(rawValue: rawValue ?? AppLanguage.system.rawValue) ?? .system
+    private var quickShareBinding: Binding<QuickShareSettings> {
+        Binding(
+            get: { settingsStore.settings.quickShare },
+            set: { newValue in settingsStore.update { $0.quickShare = newValue } }
+        )
     }
-
-    private func applyLanguage(_ rawValue: String) {
-        LeafiyLocalization.language = Self.language(from: rawValue)
-    }
-
 
     var body: some Scene {
         WindowGroup("eddy", id: "main") {
-            ContentView()
+            ContentView(settingsStore: settingsStore)
                 .id(appLanguage)
-                .onChange(of: languageRaw) { _, newValue in
-                    applyLanguage(newValue)
-                }
         }
         .defaultSize(width: 640, height: 420)
         .windowResizability(.contentMinSize)
@@ -101,48 +93,54 @@ struct EddyApp: App {
 
         Settings {
             SettingsScaffold {
-                EddyGeneralSettingsPane()
-                EddyShareSettingsPane()
+                EddyGeneralSettingsPane(settingsStore: settingsStore)
+                QuickShareSettingsPane(settings: quickShareBinding)
                 AboutPane(
                     tagline: L("Drag-and-drop image compression — files are optimized in place."),
                     copyright: L("© 2026 Leafiy")
                 )
             }
             .id(appLanguage)
-            .onChange(of: languageRaw) { _, newValue in
-                applyLanguage(newValue)
-            }
         }
     }
 }
 
 private struct EddyMenuBarIcon: View {
-    /// MenuBarExtra flattens its label into the status item, so compose the
-    /// dedicated transparent artwork into a fixed 18-point image first.
-    private static let icon: NSImage = {
-        let side = LeafiyDesign.Size.menuBarIcon
-        return NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
-            if let base = NSImage.eddyIcon() {
-                base.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
-            } else if let fallback = NSImage(
-                systemSymbolName: "photo.on.rectangle.angled",
-                accessibilityDescription: "Eddy"
-            ) {
-                fallback.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
-            }
-            return true
-        }
+    @ObservedObject private var store = Store.shared
+
+    private static let baseIcon: NSImage = {
+        let base = LeafiyMenuBarIconRenderer.baseIcon(
+            NSImage.eddyIcon(),
+            symbolFallback: "photo.on.rectangle.angled",
+            accessibilityDescription: "Eddy"
+        )
+        base.accessibilityDescription = "Eddy"
+        return base
     }()
 
     var body: some View {
-        Image(nsImage: Self.icon)
+        Image(nsImage: LeafiyMenuBarIconRenderer.image(base: Self.baseIcon, status: status))
             .accessibilityLabel(Text(verbatim: "Eddy"))
+    }
+
+    private var status: LeafiyMenuBarStatus {
+        if store.items.contains(where: { $0.isInFlight || $0.isSharing }) {
+            return .busy
+        }
+        if store.items.contains(where: {
+            if case .failed = $0.status { return true }
+            return false
+        }) {
+            return .failure
+        }
+        return .idle
     }
 }
 
 private extension NSImage {
     static func eddyIcon() -> NSImage? {
-        for bundle in [eddyResources, Bundle.main] {
+        let resourceBundle = LeafiyLocalization.moduleBundle(package: "eddy", target: "eddy")
+        for bundle in [resourceBundle, Bundle.main] {
             guard let url = bundle.url(forResource: "eddy", withExtension: "png"),
                   let image = NSImage(contentsOf: url) else {
                 continue
@@ -151,21 +149,6 @@ private extension NSImage {
             return image
         }
         return nil
-    }
-
-    private static var eddyResources: Bundle {
-        let bundleName = "eddy_eddy.bundle"
-        let candidates = [
-            Bundle.main.resourceURL?.appendingPathComponent(bundleName, isDirectory: true),
-            Bundle.main.bundleURL.appendingPathComponent(bundleName, isDirectory: true)
-        ].compactMap { $0 }
-
-        for url in candidates {
-            if let bundle = Bundle(url: url) {
-                return bundle
-            }
-        }
-        return Bundle.main
     }
 }
 
@@ -180,66 +163,64 @@ private struct EddyMenuContent: View {
         Button(L("Paste Images")) {
             Store.shared.pasteFromClipboard()
         }
-        Divider()
-        SoftwareUpdateMenuButton()
-        Button(L("Settings…")) {
-            LeafiySettingsWindow.open()
-        }
-        Button(L("Quit eddy")) {
-            NSApp.terminate(nil)
-        }
+        LeafiyMenuTail()
     }
 }
 
 private struct EddyGeneralSettingsPane: View {
-    @AppStorage("compressionQuality") private var qualityPercent = 80.0
-    @AppStorage("resizeMaxWidth") private var resizeMaxWidth = 0
-    @AppStorage("defaultSaveFormat") private var saveFormatRaw = SaveFormat.keep.rawValue
-    @AppStorage("appLanguage") private var languageRaw = AppLanguage.system.rawValue
-
-    private var languageBinding: Binding<AppLanguage> {
-        Binding {
-            AppLanguage(rawValue: languageRaw) ?? .system
-        } set: { newLanguage in
-            languageRaw = newLanguage.rawValue
-            LeafiyLocalization.language = newLanguage
-        }
-    }
-
+    @ObservedObject var settingsStore: SettingsStore
 
     var body: some View {
-        SettingsPane(L("General"), systemImage: "gearshape", height: 390) {
-            Section(L("General")) {
-                LanguagePicker(selection: languageBinding)
-            }
-
-            Section(L("Compression")) {
-                LabeledContent(L("Default quality")) {
-                    HStack(spacing: LeafiyDesign.Spacing.s) {
-                        Slider(value: $qualityPercent, in: 10...100, step: 5)
-                        Text("\(Int(qualityPercent))%")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Picker(L("Save format"), selection: $saveFormatRaw) {
-                    ForEach(SaveFormat.allCases) { format in
-                        Text(format.title).tag(format.rawValue)
-                    }
+        LeafiyGeneralPane(language: languageBinding, tail: {
+            LabeledContent(L("Default quality")) {
+                HStack(spacing: LeafiyDesign.Spacing.s) {
+                    Slider(value: qualityBinding, in: 10...100, step: 5)
+                    Text("\(Int(settingsStore.settings.compressionQuality))%")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
                 }
             }
-
-            Section(L("Resize")) {
-                Picker(L("Max width"), selection: $resizeMaxWidth) {
-                    ForEach(ResizeMaxWidthOption.all) { option in
-                        Text(option.title).tag(option.width)
-                    }
+            Picker(L("Save format"), selection: saveFormatBinding) {
+                ForEach(SaveFormat.allCases) { format in
+                    Text(format.title).tag(format)
                 }
-
-                Text(L("Images are optimized in place — choosing PNG or JPEG converts other formats and replaces the original file. These defaults are used for new drops."))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
-        }
+            Picker(L("Max width"), selection: resizeMaxWidthBinding) {
+                ForEach(ResizeMaxWidthOption.all) { option in
+                    Text(option.title).tag(option.width)
+                }
+            }
+            Text(L("Images are optimized in place — choosing PNG or JPEG converts other formats and replaces the original file. These defaults are used for new drops."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        })
+    }
+
+    private var languageBinding: Binding<AppLanguage> {
+        Binding(
+            get: { settingsStore.appLanguage },
+            set: { settingsStore.appLanguage = $0 }
+        )
+    }
+
+    private var qualityBinding: Binding<Double> {
+        Binding(
+            get: { settingsStore.settings.compressionQuality },
+            set: { newValue in settingsStore.update { $0.compressionQuality = newValue } }
+        )
+    }
+
+    private var saveFormatBinding: Binding<SaveFormat> {
+        Binding(
+            get: { settingsStore.settings.defaultSaveFormat },
+            set: { newValue in settingsStore.update { $0.defaultSaveFormat = newValue } }
+        )
+    }
+
+    private var resizeMaxWidthBinding: Binding<Int> {
+        Binding(
+            get: { settingsStore.settings.resizeMaxWidth },
+            set: { newValue in settingsStore.update { $0.resizeMaxWidth = newValue } }
+        )
     }
 }
