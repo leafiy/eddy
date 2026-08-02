@@ -181,30 +181,12 @@ private struct EddyMenuContent: View {
         }
         Divider()
         Button(L("Settings…")) {
-            openSettingsWindow()
+            LeafiySettingsWindow.open()
         }
         Button(L("Quit eddy")) {
             NSApp.terminate(nil)
         }
     }
-}
-
-/// Opens the SwiftUI Settings scene from the menu-bar menu by performing the
-/// app-menu "Settings…" item SwiftUI maintains (equivalent to ⌘,); falls back
-/// to the legacy responder-chain selector. Same approach as fifi — a plain
-/// `SettingsLink` doesn't activate the app from a menu-bar click, so the
-/// window opened behind whatever app was frontmost.
-@MainActor
-func openSettingsWindow() {
-    NSApp.activate(ignoringOtherApps: true)
-    if let appMenu = NSApp.mainMenu?.items.first?.submenu,
-       let index = appMenu.items.firstIndex(where: {
-           $0.keyEquivalent == "," && $0.keyEquivalentModifierMask == .command
-       }) {
-        appMenu.performActionForItem(at: index)
-        return
-    }
-    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
 }
 
 private struct EddyGeneralSettingsPane: View {

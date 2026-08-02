@@ -75,7 +75,7 @@ struct ContentView: View {
             }
             .leafiyToast(store.toast)
             .alert(L("Set up Quick Share"), isPresented: $store.needsQuickShareSetup) {
-                Button(L("Open Settings")) { openSettingsWindow() }
+                Button(L("Open Settings")) { LeafiySettingsWindow.open() }
                 Button(L("Cancel"), role: .cancel) {}
             } message: {
                 Text(L("Quick Share uploads compressed files to your own object storage. Add your storage account in Settings → Share first."))
