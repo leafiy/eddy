@@ -43,6 +43,17 @@ struct EddyApp: App {
             ))
             exit(0)
         }
+        LeafiyDiagnostics.writeLaunchReport(
+            store: LeafiySettingsStore<AppSettings>.standard(directoryName: "Eddy"),
+            probes: [
+                (label: "app",
+                 bundle: LeafiyLocalization.moduleBundle(package: "eddy", target: "eddy"),
+                 key: "Paste Images"),
+                (label: "leafiy-ui",
+                 bundle: LeafiyLocalization.moduleBundle(package: "LeafiyUI", target: "LeafiyUI"),
+                 key: "About")
+            ]
+        )
     }
 
     private var appLanguage: AppLanguage {
