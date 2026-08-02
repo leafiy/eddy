@@ -242,7 +242,8 @@ if [ "$PUBLISH_TO_LEAFIY" = "1" ]; then
     }
     printf '%s' "$leafiy_health" | /usr/bin/python3 -c 'import json, sys
 value = json.load(sys.stdin)
-if not value.get("ok") or "releases" not in value.get("capabilities", []):
+capabilities = set(value.get("capabilities", []))
+if not value.get("ok") or not capabilities.intersection({"oss-releases", "releases"}):
     raise SystemExit(1)
 ' || {
         echo "error: leafiy.com does not expose the release publishing API"
@@ -597,14 +598,21 @@ fi
 
 publish_github_release() {
     echo "== publishing $VERSION on GitHub =="
+    github_release_exists=0
+    if gh release view "$VERSION" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
+        github_release_exists=1
+    fi
     remote_tag=$(git ls-remote "$GITHUB_REMOTE" "refs/tags/$VERSION" | awk 'NR == 1 { print $1 }')
     remote_peeled=$(git ls-remote "$GITHUB_REMOTE" "refs/tags/$VERSION^{}" | awk 'NR == 1 { print $1 }')
     remote_tag_commit=${remote_peeled:-$remote_tag}
     if [ -n "$remote_tag_commit" ]; then
-        [ "$remote_tag_commit" = "$HEAD_SHA" ] || {
-            echo "error: GitHub tag $VERSION already points to another commit"
-            exit 1
-        }
+        if [ "$remote_tag_commit" != "$HEAD_SHA" ]; then
+            [ "$github_release_exists" = "1" ] || {
+                echo "error: GitHub tag $VERSION already points to another commit"
+                exit 1
+            }
+            echo "GitHub tag $VERSION is immutable; verifying the existing release assets"
+        fi
     else
         if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
             [ "$(git rev-list -n 1 "$VERSION")" = "$HEAD_SHA" ] || {
@@ -627,7 +635,7 @@ publish_github_release() {
     } > "$github_notes"
 
     github_assets="$ARTIFACT_DIR/eddy-$VERSION-arm64.dmg $ARTIFACT_DIR/eddy-$VERSION-x86_64.dmg $ARTIFACT_DIR/SHA256SUMS"
-    if gh release view "$VERSION" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
+    if [ "$github_release_exists" = "1" ]; then
         existing_names=$(gh release view "$VERSION" --repo "$GITHUB_REPO" --json assets --jq '.assets[].name')
         verify_dir="$ARTIFACT_DIR/.github-verify"
         rm -rf "$verify_dir"
