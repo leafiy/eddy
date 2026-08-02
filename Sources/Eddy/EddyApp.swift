@@ -109,6 +109,13 @@ struct EddyApp: App {
             }
         }
 
+        Window(L("History"), id: "history") {
+            HistoryView()
+                .id(appLanguage)
+        }
+        .defaultSize(width: 640, height: 420)
+        .windowResizability(.contentMinSize)
+
         MenuBarExtra {
             EddyMenuContent()
                 .id(appLanguage)
@@ -189,6 +196,10 @@ private struct EddyMenuContent: View {
         }
         Button(L("Paste Images")) {
             Store.shared.pasteFromClipboard()
+        }
+        Button(L("History")) {
+            openWindow(id: "history")
+            NSApp.activate(ignoringOtherApps: true)
         }
         LeafiyMenuTail()
     }

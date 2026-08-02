@@ -39,6 +39,7 @@ struct ContentView: View {
     @ObservedObject var settingsStore: SettingsStore
     @State private var isDropTargeted = false
     @State private var showingOpenPanel = false
+    @Environment(\.openWindow) private var openWindow
 
     private enum Metrics {
         /// Fixed slider width keeps the quality/size strip one compact line
@@ -203,6 +204,15 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .automatic) {
             Button {
+                openWindow(id: "history")
+            } label: {
+                Label(L("History"), systemImage: "clock.arrow.circlepath")
+            }
+            .keyboardShortcut("y", modifiers: .command)
+            .help(L("Show compression history (⌘Y)"))
+        }
+        ToolbarItem(placement: .automatic) {
+            Button {
                 store.clearFinished()
             } label: {
                 Label(L("Clear"), systemImage: "trash")
@@ -343,6 +353,17 @@ enum Formatters {
 
     static func bytes(_ count: Int) -> String {
         byteFormatter.string(fromByteCount: Int64(count))
+    }
+
+    private static let dateTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .short
+        return formatter
+    }()
+
+    static func dateTime(_ date: Date) -> String {
+        dateTimeFormatter.string(from: date)
     }
 
     static func percent(_ fraction: Double) -> String {

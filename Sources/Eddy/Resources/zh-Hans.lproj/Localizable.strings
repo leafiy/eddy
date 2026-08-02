@@ -72,3 +72,15 @@
 "Quick Share — upload the compressed file and copy the public link" = "快速分享——上传压缩后的文件并复制公网链接";
 "Quick Share can’t read the file: %@" = "快速分享无法读取文件：%@";
 "Public link copied to clipboard." = "公网链接已复制到剪贴板。";
+
+/* History */
+"History" = "历史记录";
+"Show compression history (⌘Y)" = "显示压缩历史记录（⌘Y）";
+"Remove all history entries" = "移除所有历史记录";
+"No compressions yet" = "还没有压缩记录";
+"Files you compress show up here — drag them out, reveal them in Finder, or run them again." = "压缩过的文件会显示在这里——可以拖出去、在 Finder 中显示，或再次压缩。";
+"Saved %@ in total" = "共节省 %@";
+"Re-compress" = "重新压缩";
+"Remove from History" = "从历史记录中移除";
+"Re-compress — send the file back to the main window and run it again" = "重新压缩——把文件放回主窗口再执行一次";
+"File no longer exists — it may have been moved or deleted" = "文件已不存在——可能已被移动或删除";

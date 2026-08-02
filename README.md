@@ -11,6 +11,7 @@ Eddy is a fast, lightweight image compressor built for macOS. Drop in images or 
 - Preserves aspect ratio and never enlarges smaller images
 - Replaces an original only when the compressed result is actually smaller
 - Batch progress and clear per-file results
+- Compression history (`⌘Y`) — the last 500 successful runs with their savings; drag files out, reveal them in Finder, or re-compress
 - English and Simplified Chinese interface
 
 ## Quick Share

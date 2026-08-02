@@ -249,16 +249,28 @@ final class Store: ObservableObject {
             let outcome = try Compressor.optimize(fileURL: item.url, quality: quality, maxWidth: maxWidth, format: format)
             let after = Compressor.pixelDimensions(of: outcome.outputURL)
             await MainActor.run {
+                var dimensionsText: String?
+                if let before, let after {
+                    dimensionsText = before == after
+                        ? "\(after.width)×\(after.height)"
+                        : "\(before.width)×\(before.height) → \(after.width)×\(after.height)"
+                }
                 self.update(item.id) {
                     $0.url = outcome.outputURL
                     $0.originalBytes = outcome.originalBytes
                     $0.finalBytes = outcome.finalBytes
                     $0.status = outcome.replaced ? .done : .unchanged
-                    if let before, let after {
-                        $0.dimensions = before == after
-                            ? "\(after.width)×\(after.height)"
-                            : "\(before.width)×\(before.height) → \(after.width)×\(after.height)"
+                    if dimensionsText != nil {
+                        $0.dimensions = dimensionsText
                     }
+                }
+                if outcome.replaced {
+                    HistoryStore.shared.record(HistoryEntry(
+                        path: outcome.outputURL.path,
+                        originalBytes: outcome.originalBytes,
+                        finalBytes: outcome.finalBytes,
+                        dimensions: dimensionsText
+                    ))
                 }
             }
         } catch {
