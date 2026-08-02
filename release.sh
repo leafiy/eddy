@@ -5,8 +5,8 @@
 #
 # Usage, on a Mac with the Xcode command line tools:
 #   sh release.sh --prepare [v1.2.3] # update Info.plist only, defaulting to next patch
-#   sh release.sh                  # bump, test, package, commit, push, and publish
-#   sh release.sh v1.2.3           # use an explicit version, then package and publish
+#   sh release.sh                  # test, package, commit, push, and publish the current version
+#   sh release.sh v1.2.3           # set an explicit version, then package and publish
 #   GH_TOKEN=xxxx sh release.sh    # use an explicit GitHub fine-grained PAT
 #   PUBLISH_TO_LEAFIY=0 PUBLISH_TO_GITHUB=0 sh release.sh # local build only
 #   PUBLISH_TO_GITHUB=0 sh release.sh # skip GitHub source/release publishing
@@ -52,6 +52,20 @@ validate_version() {
     }
 }
 
+published_tag_commit() { # $1 = tag
+    tag="$1"
+    if git rev-parse -q --verify "$tag^{}" >/dev/null 2>&1; then
+        git rev-list -n 1 "$tag"
+        return
+    fi
+    remote="${GITHUB_REMOTE:-github}"
+    git remote get-url "$remote" >/dev/null 2>&1 || return 1
+    commit=$(git ls-remote "$remote" "refs/tags/$tag^{}" | awk 'NR == 1 { print $1 }')
+    [ -n "$commit" ] || commit=$(git ls-remote "$remote" "refs/tags/$tag" | awk 'NR == 1 { print $1 }')
+    [ -n "$commit" ] || return 1
+    printf '%s\n' "$commit"
+}
+
 if [ "${1:-}" = "--prepare" ]; then
     ensure_clean_tree
     if [ "${2:-}" ]; then
@@ -79,19 +93,33 @@ if [ -n "$(git status --porcelain)" ]; then
     echo "warning: packaging the current working tree, including uncommitted changes"
 fi
 REQUESTED_VERSION="${1:-}"
-if [ -n "$REQUESTED_VERSION" ]; then
-    VERSION_NUMBER="${REQUESTED_VERSION#v}"
-else
-    VERSION_NUMBER=$(increment_version "$CURRENT_VERSION") || {
-        echo "error: cannot increment patch version '$CURRENT_VERSION'"
-        exit 1
-    }
-fi
+VERSION_NUMBER="${REQUESTED_VERSION#v}"
+[ -n "$VERSION_NUMBER" ] || VERSION_NUMBER="$CURRENT_VERSION"
 validate_version "$VERSION_NUMBER"
 printf '%s\n' "$CURRENT_BUILD" | grep -Eq '^[0-9]+$' || {
     echo "error: CFBundleVersion must be numeric (got '$CURRENT_BUILD')"
     exit 1
 }
+PUBLISHED_COMMIT=$(published_tag_commit "v$VERSION_NUMBER" || true)
+if [ -n "$PUBLISHED_COMMIT" ]; then
+    if [ -n "$REQUESTED_VERSION" ]; then
+        if [ "$(git rev-parse HEAD)" != "$PUBLISHED_COMMIT" ] || [ -n "$(git status --porcelain)" ]; then
+            echo "error: v$VERSION_NUMBER is already published from commit $PUBLISHED_COMMIT"
+            echo "hint: use a new version for the changed source"
+            exit 1
+        fi
+    else
+        VERSION_NUMBER=$(increment_version "$CURRENT_VERSION") || {
+            echo "error: cannot increment patch version '$CURRENT_VERSION'"
+            exit 1
+        }
+        [ -z "$(published_tag_commit "v$VERSION_NUMBER" || true)" ] || {
+            echo "error: next version v$VERSION_NUMBER is already published"
+            exit 1
+        }
+        echo "v$CURRENT_VERSION is already published; preparing next release v$VERSION_NUMBER"
+    fi
+fi
 if [ "$VERSION_NUMBER" != "$CURRENT_VERSION" ]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION_NUMBER" Info.plist >/dev/null
     CURRENT_BUILD=$((CURRENT_BUILD + 1))
@@ -100,7 +128,6 @@ if [ "$VERSION_NUMBER" != "$CURRENT_VERSION" ]; then
     echo "prepared Eddy v$VERSION_NUMBER (build $CURRENT_BUILD)"
 fi
 VERSION="v$VERSION_NUMBER"
-HEAD_SHA=$(git rev-parse HEAD)
 
 GITEA_URL="${GITEA_URL:-http://192.168.52.4:5010}"
 OWNER_REPO=$(git remote get-url origin | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')
@@ -188,9 +215,11 @@ push_github_main() {
         echo "replacing GitHub's one-file placeholder history with Eddy source..."
         git push --force-with-lease="refs/heads/main:$remote_sha" "$GITHUB_REMOTE" HEAD:main
     else
-        echo "error: GitHub main has independent commits; refusing to overwrite it"
-        echo "hint: reconcile $GITHUB_REMOTE/main with local main, then rerun the release"
-        exit 1
+        echo "merging GitHub-only history while keeping Eddy's canonical source tree..."
+        git merge -s ours --no-edit "$GITHUB_REMOTE/main"
+        HEAD_SHA=$(git rev-parse HEAD)
+        git push origin HEAD:main
+        git push "$GITHUB_REMOTE" HEAD:main
     fi
 }
 
@@ -420,44 +449,8 @@ build_dmg() { # $1 = arch
     echo "made $dmg"
 }
 
-[ "${REUSE_RELEASE_WORK:-0}" = "1" ] || rm -rf "$WORK_ROOT"
-mkdir -p "$WORK_ROOT" "$ARTIFACT_DIR"
-echo "== running release tests =="
-swift test -c release --scratch-path "$WORK_ROOT/swift-tests"
-arm64_dmg="$ARTIFACT_DIR/eddy-$VERSION-arm64.dmg"
-x86_dmg="$ARTIFACT_DIR/eddy-$VERSION-x86_64.dmg"
-needs_build=0
-for candidate_dmg in "$arm64_dmg" "$x86_dmg"; do
-    if [ "${REBUILD_RELEASE:-0}" = "1" ] || [ ! -f "$candidate_dmg" ]; then
-        needs_build=1
-    fi
-done
-if [ "$needs_build" = "1" ]; then
-    compile_app_icon_assets "$APP_ICON_SOURCE" "$WORK_ROOT"
-fi
-for arch in arm64 x86_64; do
-    existing_dmg="$ARTIFACT_DIR/eddy-$VERSION-$arch.dmg"
-    if [ "${REBUILD_RELEASE:-0}" != "1" ] && [ -f "$existing_dmg" ]; then
-        echo "== reusing existing notarized $arch $VERSION artifact =="
-        hdiutil verify "$existing_dmg" >/dev/null
-        codesign --verify --verbose=2 "$existing_dmg"
-        spctl -a -vv -t open --context context:primary-signature "$existing_dmg"
-    else
-        build_dmg "$arch"
-    fi
-done
-rm -rf "$WORK_ROOT"
-
-(
-    cd "$ARTIFACT_DIR"
-    shasum -a 256 \
-        "eddy-$VERSION-arm64.dmg" \
-        "eddy-$VERSION-x86_64.dmg" > SHA256SUMS
-)
-
-# Commit and push the exact source used for the release before publishing any
-# release metadata or assets. `git add` is scoped to this repository, so the
-# sibling leafiy-ui working tree can never be included.
+# Commit the exact source before testing or packaging so reused artifacts can
+# be tied to one immutable commit.
 if [ -n "$(git status --porcelain)" ]; then
     [ "$AUTO_COMMIT_RELEASE" = "1" ] || {
         echo "error: release requires a clean working tree"
@@ -468,6 +461,50 @@ if [ -n "$(git status --porcelain)" ]; then
     git commit -m "Release $VERSION"
 fi
 HEAD_SHA=$(git rev-parse HEAD)
+
+[ "${REUSE_RELEASE_WORK:-0}" = "1" ] || rm -rf "$WORK_ROOT"
+mkdir -p "$WORK_ROOT" "$ARTIFACT_DIR"
+echo "== running release tests =="
+swift test -c release --scratch-path "$WORK_ROOT/swift-tests"
+arm64_dmg="$ARTIFACT_DIR/eddy-$VERSION-arm64.dmg"
+x86_dmg="$ARTIFACT_DIR/eddy-$VERSION-x86_64.dmg"
+source_commit_file="$ARTIFACT_DIR/.source-commit"
+artifacts_match_source=0
+if [ "${REBUILD_RELEASE:-0}" != "1" ] && \
+    [ -f "$source_commit_file" ] && [ "$(cat "$source_commit_file")" = "$HEAD_SHA" ]; then
+    artifacts_match_source=1
+fi
+needs_build=0
+for candidate_dmg in "$arm64_dmg" "$x86_dmg"; do
+    if [ "$artifacts_match_source" != "1" ] || [ ! -f "$candidate_dmg" ]; then
+        needs_build=1
+    fi
+done
+if [ "$needs_build" = "1" ]; then
+    compile_app_icon_assets "$APP_ICON_SOURCE" "$WORK_ROOT"
+fi
+for arch in arm64 x86_64; do
+    existing_dmg="$ARTIFACT_DIR/eddy-$VERSION-$arch.dmg"
+    if [ "$artifacts_match_source" = "1" ] && [ -f "$existing_dmg" ]; then
+        echo "== reusing existing notarized $arch $VERSION artifact from $HEAD_SHA =="
+        hdiutil verify "$existing_dmg" >/dev/null
+        codesign --verify --verbose=2 "$existing_dmg"
+        spctl -a -vv -t open --context context:primary-signature "$existing_dmg"
+    else
+        build_dmg "$arch"
+    fi
+done
+printf '%s\n' "$HEAD_SHA" > "$source_commit_file"
+rm -rf "$WORK_ROOT"
+
+(
+    cd "$ARTIFACT_DIR"
+    shasum -a 256 \
+        "eddy-$VERSION-arm64.dmg" \
+        "eddy-$VERSION-x86_64.dmg" > SHA256SUMS
+)
+
+# Publish the exact source commit used to build or validate the artifacts.
 git push origin HEAD:main
 REMOTE_MAIN=$(git ls-remote origin refs/heads/main | awk 'NR == 1 { print $1 }')
 [ "$HEAD_SHA" = "$REMOTE_MAIN" ] || {
@@ -608,13 +645,10 @@ publish_github_release() {
     remote_peeled=$(git ls-remote "$GITHUB_REMOTE" "refs/tags/$VERSION^{}" | awk 'NR == 1 { print $1 }')
     remote_tag_commit=${remote_peeled:-$remote_tag}
     if [ -n "$remote_tag_commit" ]; then
-        if [ "$remote_tag_commit" != "$HEAD_SHA" ]; then
-            [ "$github_release_exists" = "1" ] || {
-                echo "error: GitHub tag $VERSION already points to another commit"
-                exit 1
-            }
-            echo "GitHub tag $VERSION is immutable; verifying the existing release assets"
-        fi
+        [ "$remote_tag_commit" = "$HEAD_SHA" ] || {
+            echo "error: GitHub tag $VERSION already points to another commit"
+            exit 1
+        }
     else
         if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
             [ "$(git rev-list -n 1 "$VERSION")" = "$HEAD_SHA" ] || {
