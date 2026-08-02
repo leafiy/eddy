@@ -71,8 +71,7 @@ struct HistoryView: View {
     /// current per-drop settings — exactly like re-dropping it.
     private func recompress(_ entry: HistoryEntry) {
         guard fileStillExists(entry) else { return }
-        openWindow(id: "main")
-        NSApp.activate(ignoringOtherApps: true)
+        EddyWindows.presentMain(openWindow)
         let options = SettingsStore.shared.processingOptions
         Store.shared.add(urls: [entry.url], quality: options.quality, maxWidth: options.maxWidth, format: options.format)
     }

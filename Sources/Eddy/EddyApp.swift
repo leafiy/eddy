@@ -28,6 +28,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+/// Raises the main window from secondary entry points (menu bar, history).
+@MainActor
+enum EddyWindows {
+    static func presentMain(_ openWindow: OpenWindowAction) {
+        openWindow(id: "main")
+        LeafiyWindowPresenter.presentWhenAvailable {
+            NSApp.windows.first { !($0 is NSPanel) && $0.identifier?.rawValue.hasPrefix("main") == true }
+        }
+    }
+}
+
 @main
 struct EddyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -72,7 +83,10 @@ struct EddyApp: App {
     }
 
     var body: some Scene {
-        WindowGroup("eddy", id: "main") {
+        // A single-instance Window, not a WindowGroup: reopening from the
+        // menu bar or the history window must raise the existing queue, never
+        // spawn a second one (canonical-app behavior, like daisy).
+        Window("eddy", id: "main") {
             ContentView(settingsStore: settingsStore)
                 .id(appLanguage)
         }
@@ -191,8 +205,7 @@ private struct EddyMenuContent: View {
 
     var body: some View {
         Button(L("Open eddy")) {
-            openWindow(id: "main")
-            NSApp.activate(ignoringOtherApps: true)
+            EddyWindows.presentMain(openWindow)
         }
         Button(L("Paste Images")) {
             Store.shared.pasteFromClipboard()
