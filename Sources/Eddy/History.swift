@@ -65,6 +65,9 @@ final class HistoryStore: ObservableObject {
     static let shared = HistoryStore()
 
     @Published private(set) var entries: [HistoryEntry]
+    /// Whether the main window's history panel is showing. Runtime-only
+    /// presentation state (daisy keeps the same flag on its history object).
+    @Published var isPresented = false
 
     private let store: LeafiySettingsStore<HistoryDocument>
 

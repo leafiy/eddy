@@ -2,52 +2,60 @@ import AppKit
 import LeafiyUI
 import SwiftUI
 
-/// The history window: the last 500 successful compressions, newest first.
-/// Rows drag out as real files, reopen in Finder, or go back into the main
-/// window for another pass.
-struct HistoryView: View {
+/// The history panel: the last 500 successful compressions, newest first.
+/// Slides in over the trailing edge of the main window; the toolbar button
+/// (⌘Y) toggles it. Rows drag out as real files, reopen in Finder, or go
+/// back into the queue for another pass.
+struct HistoryPanel: View {
     @ObservedObject private var history = HistoryStore.shared
-    @Environment(\.openWindow) private var openWindow
-    @State private var toast: String?
-    @State private var toastTask: Task<Void, Never>?
+
+    static let width: CGFloat = 380
+    static let slideAnimation: Animation = .easeInOut(duration: 0.25)
 
     var body: some View {
-        content
-            .frame(minWidth: LeafiyDesign.Size.mainWindowMinWidth, minHeight: LeafiyDesign.Size.mainWindowMinHeight)
-            .leafiyToast(toast)
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
-                    Button {
-                        history.clear()
-                    } label: {
-                        Label(L("Clear"), systemImage: "trash")
-                    }
-                    .disabled(history.entries.isEmpty)
-                    .help(L("Remove all history entries"))
-                }
-            }
-    }
-
-    @ViewBuilder private var content: some View {
-        if history.entries.isEmpty {
-            EmptyStateView(
-                systemImage: "clock.arrow.circlepath",
-                title: L("No compressions yet"),
-                subtitle: L("Files you compress show up here — drag them out, reveal them in Finder, or run them again.")
-            )
-        } else {
-            VStack(spacing: .zero) {
+        VStack(spacing: .zero) {
+            header
+            Divider()
+            if history.entries.isEmpty {
+                EmptyStateView(
+                    systemImage: "clock.arrow.circlepath",
+                    title: L("No compressions yet"),
+                    subtitle: L("Files you compress show up here — drag them out, reveal them in Finder, or run them again.")
+                )
+            } else {
                 List(history.entries) { entry in
-                    HistoryRow(
-                        entry: entry,
-                        recompress: { recompress(entry) },
-                        showInFinder: { showInFinder(entry) }
-                    )
+                    HistoryRow(entry: entry)
                 }
                 .listStyle(.inset(alternatesRowBackgrounds: true))
                 footer
             }
         }
+        .frame(width: Self.width)
+        .frame(maxHeight: .infinity)
+        .background(.regularMaterial)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(.separator)
+                .frame(width: 1)
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: LeafiyDesign.Spacing.s) {
+            Text(L("History"))
+                .font(.headline)
+            Spacer()
+            Button {
+                history.clear()
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .disabled(history.entries.isEmpty)
+            .help(L("Remove all history entries"))
+        }
+        .padding(.horizontal, LeafiyDesign.Spacing.m)
+        .padding(.vertical, LeafiyDesign.Spacing.s)
     }
 
     private var footer: some View {
@@ -64,46 +72,10 @@ struct HistoryView: View {
             }
         }
     }
-
-    // MARK: - Actions
-
-    /// Puts the file back into the main window queue and re-runs it with the
-    /// current per-drop settings — exactly like re-dropping it.
-    private func recompress(_ entry: HistoryEntry) {
-        guard fileStillExists(entry) else { return }
-        EddyWindows.presentMain(openWindow)
-        let options = SettingsStore.shared.processingOptions
-        Store.shared.add(urls: [entry.url], quality: options.quality, maxWidth: options.maxWidth, format: options.format)
-    }
-
-    private func showInFinder(_ entry: HistoryEntry) {
-        guard fileStillExists(entry) else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([entry.url])
-    }
-
-    private func fileStillExists(_ entry: HistoryEntry) -> Bool {
-        guard FileManager.default.fileExists(atPath: entry.path) else {
-            showToast(L("File no longer exists — it may have been moved or deleted"))
-            return false
-        }
-        return true
-    }
-
-    private func showToast(_ message: String, seconds: Double = 2.8) {
-        toast = message
-        toastTask?.cancel()
-        toastTask = Task {
-            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-            guard !Task.isCancelled else { return }
-            toast = nil
-        }
-    }
 }
 
 private struct HistoryRow: View {
     let entry: HistoryEntry
-    let recompress: () -> Void
-    let showInFinder: () -> Void
 
     @State private var thumbnail: CGImage?
 
@@ -114,23 +86,25 @@ private struct HistoryRow: View {
                 Text(entry.filename)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(caption)
+                Text(Formatters.dateTime(entry.date))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .help(entry.path)
+            .help(help)
             Spacer(minLength: LeafiyDesign.Spacing.m)
-            Text(Formatters.bytes(entry.originalBytes))
-                .foregroundStyle(.secondary)
-            savedColumn
-            Text(Formatters.bytes(entry.finalBytes))
+            VStack(alignment: .trailing, spacing: LeafiyDesign.Spacing.xxs) {
+                savedText
+                Text("\(Formatters.bytes(entry.originalBytes)) → \(Formatters.bytes(entry.finalBytes))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             recompressControl
         }
         .font(.body.monospacedDigit())
         .padding(.vertical, LeafiyDesign.Spacing.xs)
         .contentShape(Rectangle())
         // Real file drag: drop into Finder, Mail, a browser upload field, or
-        // back onto the main window to compress again.
+        // onto the queue side of the window to compress again.
         .onDrag {
             NSItemProvider(contentsOf: entry.url) ?? NSItemProvider()
         }
@@ -158,17 +132,16 @@ private struct HistoryRow: View {
         }
     }
 
-    private var caption: String {
-        let date = Formatters.dateTime(entry.date)
+    private var help: String {
         if let dimensions = entry.dimensions {
-            return "\(dimensions) · \(date)"
+            return "\(entry.path)\n\(dimensions)"
         }
-        return date
+        return entry.path
     }
 
     /// The row's headline: how much this compression saved. Format conversion
     /// may legitimately grow the file (JPEG → PNG); show "+N%" then.
-    private var savedColumn: some View {
+    private var savedText: some View {
         let fraction = entry.savedFraction
         return Text(fraction < 0
             ? "+" + Formatters.percent(-fraction)
@@ -182,8 +155,30 @@ private struct HistoryRow: View {
             Image(systemName: "arrow.counterclockwise")
         }
         .buttonStyle(.borderless)
-        .help(L("Re-compress — send the file back to the main window and run it again"))
-        .frame(width: LeafiyDesign.Size.rowIcon)
+        .help(L("Re-compress — send the file back to the queue and run it again"))
+    }
+
+    // MARK: - Actions
+
+    /// Puts the file back into the queue and re-runs it with the current
+    /// per-drop settings — exactly like re-dropping it.
+    private func recompress() {
+        guard fileStillExists() else { return }
+        let options = SettingsStore.shared.processingOptions
+        Store.shared.add(urls: [entry.url], quality: options.quality, maxWidth: options.maxWidth, format: options.format)
+    }
+
+    private func showInFinder() {
+        guard fileStillExists() else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([entry.url])
+    }
+
+    private func fileStillExists() -> Bool {
+        guard FileManager.default.fileExists(atPath: entry.path) else {
+            Store.shared.showToast(L("File no longer exists — it may have been moved or deleted"))
+            return false
+        }
+        return true
     }
 
     private var thumbnailView: some View {

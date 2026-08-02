@@ -39,7 +39,7 @@ struct ContentView: View {
     @ObservedObject var settingsStore: SettingsStore
     @State private var isDropTargeted = false
     @State private var showingOpenPanel = false
-    @Environment(\.openWindow) private var openWindow
+    @ObservedObject private var history = HistoryStore.shared
 
     private enum Metrics {
         /// Fixed slider width keeps the quality/size strip one compact line
@@ -70,6 +70,12 @@ struct ContentView: View {
                     RoundedRectangle(cornerRadius: LeafiyDesign.Radius.card)
                         .strokeBorder(Color.accentColor, lineWidth: LeafiyDesign.Spacing.xxs)
                         .padding(LeafiyDesign.Spacing.xs)
+                }
+            }
+            .overlay(alignment: .trailing) {
+                if history.isPresented {
+                    HistoryPanel()
+                        .transition(.move(edge: .trailing))
                 }
             }
             .leafiyToast(store.toast)
@@ -204,12 +210,14 @@ struct ContentView: View {
         }
         ToolbarItem(placement: .automatic) {
             Button {
-                openWindow(id: "history")
+                withAnimation(HistoryPanel.slideAnimation) {
+                    history.isPresented.toggle()
+                }
             } label: {
                 Label(L("History"), systemImage: "clock.arrow.circlepath")
             }
             .keyboardShortcut("y", modifiers: .command)
-            .help(L("Show compression history (⌘Y)"))
+            .help(L("Show or hide compression history (⌘Y)"))
         }
         ToolbarItem(placement: .automatic) {
             Button {

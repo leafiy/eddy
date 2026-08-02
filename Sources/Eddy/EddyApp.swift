@@ -84,8 +84,8 @@ struct EddyApp: App {
 
     var body: some Scene {
         // A single-instance Window, not a WindowGroup: reopening from the
-        // menu bar or the history window must raise the existing queue, never
-        // spawn a second one (canonical-app behavior, like daisy).
+        // menu bar must raise the existing queue, never spawn a second one
+        // (canonical-app behavior, like daisy).
         Window("eddy", id: "main") {
             ContentView(settingsStore: settingsStore)
                 .id(appLanguage)
@@ -122,13 +122,6 @@ struct EddyApp: App {
                 .keyboardShortcut("a", modifiers: .command)
             }
         }
-
-        Window(L("History"), id: "history") {
-            HistoryView()
-                .id(appLanguage)
-        }
-        .defaultSize(width: 640, height: 420)
-        .windowResizability(.contentMinSize)
 
         MenuBarExtra {
             EddyMenuContent()
@@ -211,8 +204,10 @@ private struct EddyMenuContent: View {
             Store.shared.pasteFromClipboard()
         }
         Button(L("History")) {
-            openWindow(id: "history")
-            NSApp.activate(ignoringOtherApps: true)
+            EddyWindows.presentMain(openWindow)
+            withAnimation(HistoryPanel.slideAnimation) {
+                HistoryStore.shared.isPresented = true
+            }
         }
         LeafiyMenuTail()
     }
