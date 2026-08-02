@@ -6,13 +6,16 @@ import LeafiyUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Reconcile the persisted preference with the system login-item
-        // registration — like daisy/fifi, this repairs stale state after the
-        // app bundle moves or settings.json is restored from a backup.
-        LeafiyLaunchAtLogin.setEnabled(SettingsStore.shared.settings.launchAtLogin)
+        // Reconcile persisted launch-time preferences with process/system
+        // state — like daisy/fifi, this repairs stale state after the app
+        // bundle moves or settings.json is restored from a backup.
+        let settings = SettingsStore.shared.settings
+        LeafiyLaunchAtLogin.setEnabled(settings.launchAtLogin)
         SoftwareUpdateController.shared.startAutomaticCheck()
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        LeafiyDockIcon.setVisible(settings.showDockIcon)
+        if settings.showDockIcon {
+            NSApp.activate(ignoringOtherApps: true)
+        }
     }
 
     /// Keep running after the last window closes — like fifi, the menu-bar
@@ -217,7 +220,7 @@ private struct EddyGeneralSettingsPane: View {
     @ObservedObject var settingsStore: SettingsStore
 
     var body: some View {
-        LeafiyGeneralPane(language: languageBinding, launchAtLogin: launchAtLoginBinding, tail: {
+        LeafiyGeneralPane(language: languageBinding, launchAtLogin: launchAtLoginBinding, dockIcon: showDockIconBinding, tail: {
             LabeledContent(L("Default quality")) {
                 HStack(spacing: LeafiyDesign.Spacing.s) {
                     Slider(value: qualityBinding, in: 10...100, step: 5)
@@ -253,6 +256,13 @@ private struct EddyGeneralSettingsPane: View {
         Binding(
             get: { settingsStore.settings.launchAtLogin },
             set: { newValue in settingsStore.update { $0.launchAtLogin = newValue } }
+        )
+    }
+
+    private var showDockIconBinding: Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.showDockIcon },
+            set: { newValue in settingsStore.update { $0.showDockIcon = newValue } }
         )
     }
 
