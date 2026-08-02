@@ -6,6 +6,10 @@ import LeafiyUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Reconcile the persisted preference with the system login-item
+        // registration — like daisy/fifi, this repairs stale state after the
+        // app bundle moves or settings.json is restored from a backup.
+        LeafiyLaunchAtLogin.setEnabled(SettingsStore.shared.settings.launchAtLogin)
         SoftwareUpdateController.shared.startAutomaticCheck()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
@@ -194,7 +198,7 @@ private struct EddyGeneralSettingsPane: View {
     @ObservedObject var settingsStore: SettingsStore
 
     var body: some View {
-        LeafiyGeneralPane(language: languageBinding, tail: {
+        LeafiyGeneralPane(language: languageBinding, launchAtLogin: launchAtLoginBinding, tail: {
             LabeledContent(L("Default quality")) {
                 HStack(spacing: LeafiyDesign.Spacing.s) {
                     Slider(value: qualityBinding, in: 10...100, step: 5)
@@ -223,6 +227,13 @@ private struct EddyGeneralSettingsPane: View {
         Binding(
             get: { settingsStore.appLanguage },
             set: { settingsStore.appLanguage = $0 }
+        )
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { settingsStore.settings.launchAtLogin },
+            set: { newValue in settingsStore.update { $0.launchAtLogin = newValue } }
         )
     }
 

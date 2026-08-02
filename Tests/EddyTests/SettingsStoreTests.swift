@@ -17,6 +17,7 @@ final class SettingsStoreTests: XCTestCase {
             resizeMaxWidth: 1200,
             defaultSaveFormat: .jpeg,
             appLanguage: "zh-Hans",
+            launchAtLogin: true,
             quickShare: QuickShareSettings(
                 provider: .s3,
                 endpointURL: "https://account-id.r2.cloudflarestorage.com",
@@ -36,6 +37,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(payload["resizeMaxWidth"] as? Int, 1200)
         XCTAssertEqual(payload["defaultSaveFormat"] as? String, "jpeg")
         XCTAssertEqual(payload["appLanguage"] as? String, "zh-Hans")
+        XCTAssertEqual(payload["launchAtLogin"] as? Bool, true)
         let quickShare = try XCTUnwrap(payload["quickShare"] as? [String: Any])
         XCTAssertEqual(quickShare["provider"] as? String, "s3")
         XCTAssertEqual(quickShare["endpointURL"] as? String, "https://account-id.r2.cloudflarestorage.com")
@@ -47,6 +49,23 @@ final class SettingsStoreTests: XCTestCase {
 
         let loaded = SettingsStore(fileURL: fileURL).load()
         XCTAssertEqual(loaded, settings)
+    }
+
+    func testAppSettingsDecodingDefaultsMissingLaunchAtLoginToFalseAndPreservesEnabledValue() throws {
+        let missing = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
+        XCTAssertFalse(missing.launchAtLogin)
+
+        let enabled = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"launchAtLogin":true}"#.utf8)
+        )
+        XCTAssertTrue(enabled.launchAtLogin)
+
+        let roundTripped = try JSONDecoder().decode(
+            AppSettings.self,
+            from: JSONEncoder().encode(enabled)
+        )
+        XCTAssertTrue(roundTripped.launchAtLogin)
     }
 
     func testMigrationAdoptsLegacyUserDefaultsValues() throws {

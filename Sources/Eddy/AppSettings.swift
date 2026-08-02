@@ -7,6 +7,7 @@ struct AppSettings: Codable, Equatable, LeafiyAppSettings {
     var resizeMaxWidth: Int
     var defaultSaveFormat: SaveFormat
     var appLanguage: String
+    var launchAtLogin: Bool
     var quickShare: QuickShareSettings
 
     static var defaults: AppSettings { AppSettings() }
@@ -17,12 +18,14 @@ struct AppSettings: Codable, Equatable, LeafiyAppSettings {
         resizeMaxWidth: Int = 0,
         defaultSaveFormat: SaveFormat = .keep,
         appLanguage: String = AppLanguage.system.rawValue,
+        launchAtLogin: Bool = false,
         quickShare: QuickShareSettings = AppSettings.defaultQuickShare
     ) {
         self.compressionQuality = compressionQuality
         self.resizeMaxWidth = resizeMaxWidth
         self.defaultSaveFormat = defaultSaveFormat
         self.appLanguage = appLanguage
+        self.launchAtLogin = launchAtLogin
         self.quickShare = quickShare
     }
 
@@ -33,6 +36,7 @@ struct AppSettings: Codable, Equatable, LeafiyAppSettings {
         resizeMaxWidth = try container.decodeIfPresent(Int.self, forKey: .resizeMaxWidth) ?? defaults.resizeMaxWidth
         defaultSaveFormat = try container.decodeIfPresent(SaveFormat.self, forKey: .defaultSaveFormat) ?? defaults.defaultSaveFormat
         appLanguage = try container.decodeIfPresent(String.self, forKey: .appLanguage) ?? defaults.appLanguage
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? defaults.launchAtLogin
         quickShare = try container.decodeIfPresent(QuickShareSettings.self, forKey: .quickShare) ?? defaults.quickShare
     }
 
