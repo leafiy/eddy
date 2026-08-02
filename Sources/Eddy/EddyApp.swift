@@ -5,6 +5,7 @@ import LeafiyUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        SoftwareUpdateController.shared.startAutomaticCheck()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -180,6 +181,7 @@ private struct EddyMenuContent: View {
             Store.shared.pasteFromClipboard()
         }
         Divider()
+        SoftwareUpdateMenuButton()
         Button(L("Settings…")) {
             LeafiySettingsWindow.open()
         }
