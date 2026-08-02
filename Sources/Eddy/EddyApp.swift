@@ -31,6 +31,18 @@ struct EddyApp: App {
 
     init() {
         LeafiyLocalization.language = SettingsStore.persistedAppLanguage()
+        if CommandLine.arguments.contains("--leafiy-doctor") {
+            let appBundle = LeafiyLocalization.moduleBundle(package: "eddy", target: "eddy")
+            let leafiyUIBundle = LeafiyLocalization.moduleBundle(package: "LeafiyUI", target: "LeafiyUI")
+            print(LeafiyDiagnostics.doctorReport(
+                store: LeafiySettingsStore<AppSettings>.standard(directoryName: "Eddy"),
+                probes: [
+                    (label: "app", bundle: appBundle, key: "Paste Images"),
+                    (label: "leafiy-ui", bundle: leafiyUIBundle, key: "About")
+                ]
+            ))
+            exit(0)
+        }
     }
 
     private var appLanguage: AppLanguage {
