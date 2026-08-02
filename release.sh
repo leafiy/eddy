@@ -172,7 +172,7 @@ github_remote_is_placeholder() {
 push_github_main() {
     remote_sha=$(git ls-remote "$GITHUB_REMOTE" refs/heads/main | awk 'NR == 1 { print $1 }')
     if [ -z "$remote_sha" ]; then
-        git push -u "$GITHUB_REMOTE" HEAD:main
+        git push "$GITHUB_REMOTE" HEAD:main
         return
     fi
     git fetch "$GITHUB_REMOTE" main
