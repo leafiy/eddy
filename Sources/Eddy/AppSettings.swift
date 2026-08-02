@@ -50,6 +50,27 @@ struct AppSettings: Codable, Equatable, LeafiyAppSettings {
         }
         return normalized
     }
+
+    /// Pre-1.1 releases kept these values in UserDefaults (@AppStorage).
+    /// Seeds a first-run settings.json from them so a user's tuned quality,
+    /// resize width, format, and language survive the settings migration.
+    static func migratedFromLegacyDefaults(_ defaults: UserDefaults = .standard) -> AppSettings {
+        var settings = AppSettings()
+        if let quality = defaults.object(forKey: "compressionQuality") as? Double {
+            settings.compressionQuality = quality
+        }
+        if let maxWidth = defaults.object(forKey: "resizeMaxWidth") as? Int {
+            settings.resizeMaxWidth = maxWidth
+        }
+        if let raw = defaults.string(forKey: "defaultSaveFormat"),
+           let format = SaveFormat(rawValue: raw) {
+            settings.defaultSaveFormat = format
+        }
+        if let language = defaults.string(forKey: "appLanguage") {
+            settings.appLanguage = language
+        }
+        return settings.normalized()
+    }
 }
 
 @MainActor
@@ -63,7 +84,10 @@ final class SettingsStore: ObservableObject {
     nonisolated static func persistedAppLanguage(
         store: LeafiySettingsStore<AppSettings> = .standard(directoryName: "Eddy")
     ) -> AppLanguage {
-        AppLanguage(rawValue: store.load().appLanguage) ?? .system
+        let settings = store.hasSavedSettings
+            ? store.load()
+            : AppSettings.migratedFromLegacyDefaults()
+        return AppLanguage(rawValue: settings.appLanguage) ?? .system
     }
 
     init(fileURL: URL? = nil) {
@@ -74,7 +98,14 @@ final class SettingsStore: ObservableObject {
             backingStore = .standard(directoryName: "Eddy")
         }
         self.store = backingStore
-        settings = backingStore.load()
+        if backingStore.hasSavedSettings {
+            settings = backingStore.load()
+        } else {
+            // First launch on the settings.json store: adopt the legacy
+            // UserDefaults values and persist them immediately.
+            settings = AppSettings.migratedFromLegacyDefaults()
+            try? backingStore.save(settings)
+        }
         applyLocalization()
     }
 

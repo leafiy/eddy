@@ -48,4 +48,28 @@ final class SettingsStoreTests: XCTestCase {
         let loaded = SettingsStore(fileURL: fileURL).load()
         XCTAssertEqual(loaded, settings)
     }
+
+    func testMigrationAdoptsLegacyUserDefaultsValues() throws {
+        let suiteName = "eddy-migration-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(65.0, forKey: "compressionQuality")
+        defaults.set(1200, forKey: "resizeMaxWidth")
+        defaults.set("jpeg", forKey: "defaultSaveFormat")
+        defaults.set("zh-Hans", forKey: "appLanguage")
+
+        let migrated = AppSettings.migratedFromLegacyDefaults(defaults)
+        XCTAssertEqual(migrated.compressionQuality, 65)
+        XCTAssertEqual(migrated.resizeMaxWidth, 1200)
+        XCTAssertEqual(migrated.defaultSaveFormat, .jpeg)
+        XCTAssertEqual(migrated.appLanguage, "zh-Hans")
+    }
+
+    func testMigrationWithoutLegacyValuesYieldsDefaults() throws {
+        let suiteName = "eddy-migration-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertEqual(AppSettings.migratedFromLegacyDefaults(defaults), AppSettings.defaults)
+    }
 }
