@@ -307,14 +307,16 @@ fi
 # Developer ID signing + notarization (required for public downloads without
 # Gatekeeper friction). One-time setup:
 #   1. Developer ID Application certificate for team Q478GZN2AV in your keychain
-#   2. xcrun notarytool store-credentials "eddy-notary" \
+#   2. the family-shared notary profile "daisy-notary" — notary credentials are
+#      per Apple ID/team, not per app, so every Leafiy app reuses daisy's:
+#      xcrun notarytool store-credentials "daisy-notary" \
 #          --apple-id tmly2006@gmail.com --team-id Q478GZN2AV --password <app-specific>
 # Then release with:
-#   NOTARY_PROFILE="eddy-notary" GITEA_TOKEN=... sh release.sh v1.1
+#   GITEA_TOKEN=... sh release.sh v1.1
 APPLE_ID="${APPLE_ID:-tmly2006@gmail.com}"
 TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
-NOTARY_PROFILE="${NOTARY_PROFILE:-$APP_SLUG-notary}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-daisy-notary}"
 ALLOW_UNNOTARIZED="${ALLOW_UNNOTARIZED:-0}"
 NOTARY_TIMEOUT="${NOTARY_TIMEOUT:-30m}"
 NOTARY_S3_ACCELERATION="${NOTARY_S3_ACCELERATION:-0}"
@@ -342,9 +344,9 @@ fi
 if [ -z "$NOTARY_PROFILE" ] && [ "$ALLOW_UNNOTARIZED" != "1" ]; then
     echo "error: NOTARY_PROFILE is required for a public DMG"
     echo "hint: create it once with:"
-    echo "hint:   xcrun notarytool store-credentials \"eddy-notary\" --apple-id $APPLE_ID --team-id $TEAM_ID --password <app-specific>"
+    echo "hint:   xcrun notarytool store-credentials \"daisy-notary\" --apple-id $APPLE_ID --team-id $TEAM_ID --password <app-specific>"
     echo "hint: then release with:"
-    echo "hint:   NOTARY_PROFILE=\"eddy-notary\" GITEA_TOKEN=... sh release.sh"
+    echo "hint:   NOTARY_PROFILE=\"daisy-notary\" GITEA_TOKEN=... sh release.sh"
     exit 1
 fi
 if [ "$SIGN_IDENTITY" != "-" ] && [ -n "$NOTARY_PROFILE" ]; then
