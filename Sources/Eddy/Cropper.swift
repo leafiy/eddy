@@ -24,7 +24,7 @@ struct CropSpec {
 /// Animated GIFs are cropped frame by frame; frame count, per-frame delays,
 /// and loop count are preserved (Animated Asset invariant). GIF re-encoding
 /// currently goes through ImageIO — bulkier output, correct timing; swap to
-/// the in-house GIF engine once docs/specs/gif-support.md lands (ADR-0001).
+/// the in-house GIF engine once docs/specs/gif-support.md lands (ADR-0002).
 enum Cropper {
 
     struct Result {

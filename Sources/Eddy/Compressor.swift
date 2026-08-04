@@ -307,7 +307,7 @@ enum Compressor {
     /// inter-frame deltas, lossy snapping. Timing (per-frame delays, loop
     /// count) is copied through verbatim; animation is never flattened.
     /// ImageIO's GIF encoder is deliberately not a candidate: its output is
-    /// reliably larger than the input (see docs/adr/0001).
+    /// reliably larger than the input (see docs/adr/0002).
     private static func recompressGIF(_ fileURL: URL, _ quality: Double, _ maxWidth: Int, _ tempDir: URL) throws -> URL {
         let encoded = try GIFCoder.recompress(fileURL: fileURL, quality: quality, maxWidth: maxWidth)
         let output = tempDir.appendingPathComponent("out.gif")

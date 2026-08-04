@@ -13,7 +13,7 @@ import ImageIO
 /// The pipeline is streaming: two decode passes, at most three index
 /// canvases resident, regardless of frame count. ImageIO's own GIF
 /// *encoder* is deliberately unused — its output is reliably larger than
-/// the input (see docs/adr/0001-in-house-gif-encoder.md).
+/// the input (see docs/adr/0002-in-house-gif-encoder.md).
 ///
 /// Timing is copied through verbatim: raw per-frame centiseconds, no
 /// clamping or normalizing, and the Netscape loop extension only when the
