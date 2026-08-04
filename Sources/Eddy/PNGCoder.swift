@@ -259,13 +259,16 @@ enum PNGCoder {
         let paletteCount = paletteAlpha.count
         // SoA -> SIMD palette for the nearest search; alpha error weighted
         // double so translucency mismatches cost more than hue shifts.
-        let palette: [SIMD4<Int32>] = (0..<paletteCount).map { i in
-            SIMD4(
-                Int32(paletteRGB[i * 3]),
-                Int32(paletteRGB[i * 3 + 1]),
-                Int32(paletteRGB[i * 3 + 2]),
-                Int32(paletteAlpha[i])
-            )
+        // Built with an explicit loop: the closure form sends the type
+        // checker into SIMD-initializer overload resolution that times out.
+        var palette = [SIMD4<Int32>]()
+        palette.reserveCapacity(paletteCount)
+        for i in 0..<paletteCount {
+            let r = Int32(paletteRGB[i * 3])
+            let g = Int32(paletteRGB[i * 3 + 1])
+            let b = Int32(paletteRGB[i * 3 + 2])
+            let a = Int32(paletteAlpha[i])
+            palette.append(SIMD4<Int32>(r, g, b, a))
         }
         let pixels = buffer.pixels
         var indices = [UInt8](repeating: 0, count: width * height)

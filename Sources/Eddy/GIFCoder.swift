@@ -124,7 +124,7 @@ enum GIFCoder {
         // Snapping tolerance in 8-bit channel units; 0 at quality 1.0, and
         // pointless when the mapping is exact (indices are already stable).
         let tolerance: Int32 = exact ? 0 : Int32(((1.0 - quality) * 24.0).rounded())
-        let paletteSIMD: [SIMD3<Int32>] = palette.map { SIMD3(Int32($0.r), Int32($0.g), Int32($0.b)) }
+        let paletteSIMD = simdPalette(palette)
 
         /// Full-canvas literal frame; `disposal` 2 pre-clears the canvas for
         /// a successor that introduces new transparency.
@@ -454,6 +454,20 @@ enum GIFCoder {
 
     // MARK: - Palette mapping (pass 2)
 
+    /// Explicit loop, not `map` — closure-form SIMD construction sends
+    /// the type checker into overload resolution that can time out.
+    private static func simdPalette(_ entries: [WeightedRGB]) -> [SIMD3<Int32>] {
+        var palette = [SIMD3<Int32>]()
+        palette.reserveCapacity(entries.count)
+        for entry in entries {
+            let r = Int32(entry.r)
+            let g = Int32(entry.g)
+            let b = Int32(entry.b)
+            palette.append(SIMD3<Int32>(r, g, b))
+        }
+        return palette
+    }
+
     /// Nearest-palette mapping with Bayer ordered dithering. The threshold
     /// offset depends only on pixel coordinates, so an unchanged source pixel
     /// always maps to the same index — no inter-frame shimmer, clean deltas.
@@ -477,7 +491,7 @@ enum GIFCoder {
         ]
 
         init(palette entries: [WeightedRGB], direct: Bool) {
-            palette = entries.map { SIMD3(Int32($0.r), Int32($0.g), Int32($0.b)) }
+            palette = simdPalette(entries)
             var lookup: [UInt32: UInt8] = [:]
             if direct {
                 lookup.reserveCapacity(entries.count)
