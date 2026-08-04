@@ -62,7 +62,8 @@ enum SaveFormat: String, CaseIterable, Identifiable, Codable {
 ///   JPEG  ImageIO progressive re-encode AND lossless metadata strip; smaller wins
 ///   WebP  bundled libwebp + lossless RIFF metadata strip; smaller wins
 ///   AVIF  bundled libavif + libaom
-///   GIF/BMP/TIFF/HEIC  ImageIO re-encode
+///   GIF   built-in pure-Swift GIF89a encoder (global palette, frame deltas, LZW)
+///   BMP/TIFF/HEIC  ImageIO re-encode
 /// Every path strips EXIF/GPS/XMP/orientation metadata and only overwrites the
 /// original when the result is smaller. `maxWidth` > 0 downscales to that
 /// width (aspect ratio kept, never upscales); 0 keeps the original size.
@@ -74,8 +75,12 @@ enum Compressor {
     ]
 
     static func optimize(fileURL: URL, quality: Double, maxWidth: Int = 0, format: SaveFormat) throws -> CompressionOutcome {
+        // Animated assets (frame count > 1) are conversion-exempt: flattening
+        // them to frame 0 and deleting the original would silently destroy
+        // the animation. They fall through to in-place recompression instead.
         if let targetExtensions = format.extensions,
-           !targetExtensions.contains(fileURL.pathExtension.lowercased()) {
+           !targetExtensions.contains(fileURL.pathExtension.lowercased()),
+           frameCount(of: fileURL) <= 1 {
             return try convert(fileURL: fileURL, to: format, quality: quality, maxWidth: maxWidth)
         }
         guard let originalSize = try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
@@ -211,6 +216,7 @@ enum Compressor {
         case "png":                return try recompressPNG(fileURL, quality, maxWidth, tempDir)
         case "webp":               return try recompressWebP(fileURL, quality, maxWidth, tempDir)
         case "avif":               return try recompressAVIF(fileURL, quality, maxWidth, tempDir)
+        case "gif":                return try recompressGIF(fileURL, quality, maxWidth, tempDir)
         default:                   return try imageIOReencode(fileURL, quality, maxWidth, tempDir)
         }
     }
@@ -297,7 +303,19 @@ enum Compressor {
         return output
     }
 
-    // MARK: - ImageIO encoder (JPEG lossy candidate, GIF/BMP/TIFF/HEIC)
+    /// Bundled pure-Swift GIF89a encoder — global palette, Bayer dithering,
+    /// inter-frame deltas, lossy snapping. Timing (per-frame delays, loop
+    /// count) is copied through verbatim; animation is never flattened.
+    /// ImageIO's GIF encoder is deliberately not a candidate: its output is
+    /// reliably larger than the input (see docs/adr/0001).
+    private static func recompressGIF(_ fileURL: URL, _ quality: Double, _ maxWidth: Int, _ tempDir: URL) throws -> URL {
+        let encoded = try GIFCoder.recompress(fileURL: fileURL, quality: quality, maxWidth: maxWidth)
+        let output = tempDir.appendingPathComponent("out.gif")
+        try encoded.write(to: output)
+        return output
+    }
+
+    // MARK: - ImageIO encoder (JPEG lossy candidate, BMP/TIFF/HEIC)
 
     private static func imageIOReencode(
         _ fileURL: URL,
@@ -319,21 +337,10 @@ enum Compressor {
         let isLossy = isJPEG
             || type?.conforms(to: .heic) == true
             || type?.conforms(to: .heif) == true
-        let isGIF = type?.conforms(to: .gif) == true
 
         guard let destination = CGImageDestinationCreateWithURL(
             output as CFURL, typeID, frameCount, nil)
         else { throw CompressionError.encodingUnsupported(String(format: L("no encoder available for .%@ on this macOS"), ext)) }
-
-        if isGIF,
-           let containerProps = CGImageSourceCopyProperties(source, nil) as? [CFString: Any],
-           let gifProps = containerProps[kCGImagePropertyGIFDictionary] as? [CFString: Any],
-           let loopCount = gifProps[kCGImagePropertyGIFLoopCount] {
-            CGImageDestinationSetProperties(
-                destination,
-                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: loopCount]] as CFDictionary
-            )
-        }
 
         for index in 0..<frameCount {
             guard let rendered = renderedFrame(source: source, index: index) else {
@@ -348,13 +355,6 @@ enum Compressor {
                 // Progressive scan order is typically a few percent smaller.
                 properties[kCGImagePropertyJFIFDictionary] =
                     [kCGImagePropertyJFIFIsProgressive: true]
-            }
-            if isGIF {
-                let delay = frameDelay(source: source, index: index)
-                properties[kCGImagePropertyGIFDictionary] = [
-                    kCGImagePropertyGIFDelayTime: delay,
-                    kCGImagePropertyGIFUnclampedDelayTime: delay,
-                ]
             }
             // Only the properties above are written; all source metadata is dropped.
             CGImageDestinationAddImage(destination, frame, properties as CFDictionary)
@@ -378,7 +378,8 @@ enum Compressor {
     }
 
     /// Width-based downscale keeping aspect ratio; never upscales.
-    private static func resizedIfNeeded(_ image: CGImage, maxWidth: Int) -> CGImage {
+    /// Shared with the GIF encoder, which scales every frame of the canvas.
+    static func resizedIfNeeded(_ image: CGImage, maxWidth: Int) -> CGImage {
         guard maxWidth > 0, image.width > maxWidth else { return image }
         let scale = Double(maxWidth) / Double(image.width)
         let newHeight = max(1, Int((Double(image.height) * scale).rounded()))
@@ -427,7 +428,6 @@ enum Compressor {
         let delay = unclamped ?? clamped ?? 0.1
         return delay > 0 ? delay : 0.1
     }
-
     private static func sourceOrientation(of fileURL: URL) -> Int {
         guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]

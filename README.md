@@ -7,6 +7,7 @@ Eddy is a fast, lightweight image compressor built for macOS. Drop in images or 
 - Drag and drop images or entire folders
 - Paste images with `⌘V` or choose files with `⌘O`
 - Supports JPEG, PNG, GIF, BMP, WebP, AVIF, TIFF, and HEIC
+- Animated GIFs are compressed in place — frame count, per-frame timing, loops, and transparency are preserved
 - Adjustable quality and maximum width
 - Preserves aspect ratio and never enlarges smaller images
 - Replaces an original only when the compressed result is actually smaller
