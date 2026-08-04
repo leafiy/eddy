@@ -85,6 +85,11 @@ struct ContentView: View {
             } message: {
                 Text(L("Quick Share uploads compressed files to your own object storage. Add your storage account in Settings → Share first."))
             }
+            .sheet(item: $store.croppingItem) { item in
+                CropView(item: item) { spec in
+                    store.applyCrop(item.id, spec: spec)
+                }
+            }
             .toolbar { toolbarContent }
     }
 
@@ -266,6 +271,15 @@ struct ItemRow: View {
                 Store.shared.quickShare(item.id)
             }
             .disabled(!item.isShareable || item.isSharing)
+            Divider()
+            Button(L("Crop…")) {
+                Store.shared.beginCrop(item.id)
+            }
+            .disabled(!item.isCroppable)
+            Button(L("Restore Original")) {
+                Store.shared.restoreOriginal(item.id)
+            }
+            .disabled(!item.isRestorable)
             Divider()
             Button(L("Show in Finder")) {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])

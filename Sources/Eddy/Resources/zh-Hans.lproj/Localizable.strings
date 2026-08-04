@@ -84,3 +84,24 @@
 "Remove from History" = "从历史记录中移除";
 "Re-compress — send the file back to the queue and run it again" = "重新压缩——把文件放回队列再执行一次";
 "File no longer exists — it may have been moved or deleted" = "文件已不存在——可能已被移动或删除";
+
+/* Restore */
+"Restore Original" = "还原原图";
+"Original restored" = "已还原原图";
+"Backup file is missing — cannot restore" = "备份文件缺失——无法还原";
+"Restore — overwrite the file with the original it was compressed from and remove this entry" = "还原——用压缩前的原始文件覆盖当前文件并移除此记录";
+
+/* Crop */
+"Crop…" = "裁剪…";
+"Crop and Save" = "裁剪并保存";
+"Cropped and saved" = "已裁剪并保存";
+"All frames are cropped identically — animation is preserved" = "所有帧按相同区域裁剪——动画保持不变";
+"Extension background" = "扩展底色";
+"White" = "白色";
+"Black" = "黑色";
+"Transparent" = "透明";
+"This format cannot store transparency" = "此格式无法存储透明";
+"Custom color" = "自定义颜色";
+"Border" = "边框";
+"Shadow" = "阴影";
+"Reset Selection" = "重置选框";

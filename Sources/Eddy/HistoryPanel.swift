@@ -99,6 +99,7 @@ private struct HistoryRow: View {
                     .foregroundStyle(.secondary)
             }
             recompressControl
+            restoreControl
         }
         .font(.body.monospacedDigit())
         .padding(.vertical, LeafiyDesign.Spacing.xs)
@@ -112,6 +113,8 @@ private struct HistoryRow: View {
             NSWorkspace.shared.open(entry.url)
         }
         .contextMenu {
+            Button(L("Restore Original"), action: restore)
+                .disabled(!entry.isRestorable)
             Button(L("Re-compress"), action: recompress)
             Divider()
             Button(L("Show in Finder"), action: showInFinder)
@@ -150,6 +153,16 @@ private struct HistoryRow: View {
             .foregroundStyle(.primary)
     }
 
+    private var restoreControl: some View {
+        Button(action: restore) {
+            Image(systemName: "arrow.uturn.backward")
+        }
+        .buttonStyle(.borderless)
+        .disabled(!entry.isRestorable)
+        .opacity(entry.isRestorable ? 1 : 0.3)
+        .help(L("Restore — overwrite the file with the original it was compressed from and remove this entry"))
+    }
+
     private var recompressControl: some View {
         Button(action: recompress) {
             Image(systemName: "arrow.counterclockwise")
@@ -166,6 +179,12 @@ private struct HistoryRow: View {
         guard fileStillExists() else { return }
         let options = SettingsStore.shared.processingOptions
         Store.shared.add(urls: [entry.url], quality: options.quality, maxWidth: options.maxWidth, format: options.format)
+    }
+
+    /// One-step restore (ADR-0001): the Intake Original overwrites the file,
+    /// then this entry and its backup disappear.
+    private func restore() {
+        Store.shared.restoreOriginal(entry: entry)
     }
 
     private func showInFinder() {

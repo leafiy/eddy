@@ -160,9 +160,9 @@ enum Compressor {
         }
     }
 
-    /// JPEG frame encode for conversions; progressive like the JPEG
-    /// re-encode path.
-    private static func jpegData(from image: CGImage, quality: Double) throws -> Data {
+    /// JPEG frame encode; progressive like the JPEG re-encode path.
+    /// Shared with Cropper, which saves crops back into JPEG files.
+    static func jpegData(from image: CGImage, quality: Double) throws -> Data {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(
             data, UTType.jpeg.identifier as CFString, 1, nil)
@@ -178,7 +178,7 @@ enum Compressor {
 
     /// JPEG can't store alpha; transparent sources (typically PNGs) are
     /// flattened onto white instead of whatever the encoder would do.
-    private static func flattenedOpaque(_ image: CGImage) -> CGImage {
+    static func flattenedOpaque(_ image: CGImage) -> CGImage {
         switch image.alphaInfo {
         case .none, .noneSkipFirst, .noneSkipLast:
             return image
@@ -398,7 +398,9 @@ enum Compressor {
         return context.makeImage() ?? image
     }
 
-    private static func renderedFrame(source: CGImageSource, index: Int) -> CGImage? {
+    /// Frame `index` decoded with EXIF orientation baked into the pixels.
+    /// Shared with Cropper (frame-by-frame animated GIF cropping).
+    static func renderedFrame(source: CGImageSource, index: Int) -> CGImage? {
         let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
         let orientation = (properties?[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
         if orientation == 1 {
@@ -414,7 +416,9 @@ enum Compressor {
         return CGImageSourceCreateThumbnailAtIndex(source, index, options as CFDictionary)
     }
 
-    private static func frameDelay(source: CGImageSource, index: Int) -> Double {
+    /// Per-frame GIF delay, defaulting to 0.1s like every browser does.
+    /// Shared with Cropper, which must preserve animation timing.
+    static func frameDelay(source: CGImageSource, index: Int) -> Double {
         guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
               let gif = properties[kCGImagePropertyGIFDictionary] as? [CFString: Any]
         else { return 0.1 }

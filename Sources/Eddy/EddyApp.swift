@@ -16,6 +16,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if settings.showDockIcon {
             NSApp.activate(ignoringOtherApps: true)
         }
+        // Sweep orphan backups: crop-only backups from past sessions and
+        // crash residue between a backup write and its entry's persist
+        // (Backup lifecycle, ADR-0001).
+        let referenced = HistoryStore.shared.referencedBackupFilenames
+        Task.detached(priority: .utility) {
+            Originals.standard.cleanupOrphans(keeping: referenced)
+        }
     }
 
     /// Keep running after the last window closes — like fifi, the menu-bar
