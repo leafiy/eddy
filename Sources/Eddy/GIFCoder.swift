@@ -58,6 +58,8 @@ enum GIFCoder {
             }
         }
         guard canvasWidth > 0, canvasHeight > 0 else { throw CompressionError.unreadableFile }
+        // GIF dimensions are 16-bit; a bigger canvas can't be represented.
+        guard canvasWidth <= 65535, canvasHeight <= 65535 else { throw CompressionError.encodeFailed }
 
         // ---- Palette ----
         let budget = max(16, min(256, Int((quality * 256).rounded())))
@@ -70,8 +72,15 @@ enum GIFCoder {
             // Fully transparent canvas — keep one slot so the table is valid.
             colors = [WeightedRGB(r: 0, g: 0, b: 0, count: 1)]
         }
+        // `direct`: the palette holds every histogram color unreduced —
+        // pixels map by lookup, undithered. `exact` additionally means the
+        // histogram saw every pixel (stride 1), i.e. truly lossless mapping;
+        // only then is lossy snapping pointless. A sampled-but-small palette
+        // (big flat-color GIF) stays direct: dithering it would only add
+        // noise the source never had.
+        let direct = !histogram.posterized && colors.count <= colorBudget
         let exact = histogram.isExact && colors.count <= colorBudget
-        let palette = exact ? colors : medianCut(&colors, maxColors: colorBudget)
+        let palette = direct ? colors : medianCut(&colors, maxColors: colorBudget)
         let transparentIndex: UInt8? = reserveTransparent ? UInt8(palette.count) : nil
         let tableCount = palette.count + (reserveTransparent ? 1 : 0)
         var tableBits = 1
@@ -111,7 +120,7 @@ enum GIFCoder {
             backgroundIndex: transparentIndex ?? 0)
         if frameCount > 1, let loopCount { writer.appendNetscapeLoop(loopCount) }
 
-        var mapper = Mapper(palette: palette, exact: exact)
+        var mapper = Mapper(palette: palette, direct: direct)
         // Snapping tolerance in 8-bit channel units; 0 at quality 1.0, and
         // pointless when the mapping is exact (indices are already stable).
         let tolerance: Int32 = exact ? 0 : Int32(((1.0 - quality) * 24.0).rounded())
@@ -467,19 +476,19 @@ enum GIFCoder {
             63, 31, 55, 23, 61, 29, 53, 21,
         ]
 
-        init(palette entries: [WeightedRGB], exact: Bool) {
+        init(palette entries: [WeightedRGB], direct: Bool) {
             palette = entries.map { SIMD3(Int32($0.r), Int32($0.g), Int32($0.b)) }
             var lookup: [UInt32: UInt8] = [:]
-            if exact {
+            if direct {
                 lookup.reserveCapacity(entries.count)
                 for (i, entry) in entries.enumerated() {
                     lookup[UInt32(entry.r) | UInt32(entry.g) << 8 | UInt32(entry.b) << 16] = UInt8(i)
                 }
             }
             exactLookup = lookup
-            // Undithered when the mapping is exact; otherwise scale the
+            // Undithered when the palette is unreduced; otherwise scale the
             // dither amplitude down as the palette grows denser.
-            spread = exact ? 0 : 60.0 / cbrt(Double(entries.count))
+            spread = direct ? 0 : 60.0 / cbrt(Double(entries.count))
             cache = Dictionary(minimumCapacity: 1 << 12)
         }
 
@@ -510,6 +519,10 @@ enum GIFCoder {
                 }
             }
             let result = UInt8(best)
+            // Photographic sources can produce millions of distinct
+            // post-dither colors; keep the cache bounded (PNGCoder does the
+            // same for its dithered remap).
+            if cache.count >= 1 << 18 { cache.removeAll(keepingCapacity: true) }
             cache[key] = result
             return result
         }
@@ -517,7 +530,7 @@ enum GIFCoder {
 
     // MARK: - LZW (GIF variant, giflib-compatible growth/clear rules)
 
-    fileprivate static func lzwEncode(_ pixels: [UInt8], minCodeSize: Int) -> [UInt8] {
+    private static func lzwEncode(_ pixels: [UInt8], minCodeSize: Int) -> [UInt8] {
         let clearCode = 1 << minCodeSize
         let endCode = clearCode + 1
         var out = [UInt8]()
