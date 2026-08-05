@@ -85,7 +85,7 @@ if [ "${1:-}" = "--prepare" ]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $((CURRENT_BUILD + 1))" Info.plist >/dev/null
     echo "prepared Eddy v$PREPARED_VERSION (build $((CURRENT_BUILD + 1)))"
     echo "review Info.plist, commit it, push main, then run:"
-    echo "  GITEA_TOKEN=... sh release.sh v$PREPARED_VERSION"
+    echo "  LEAFIY_ADMIN_PASSWORD=... GITEA_TOKEN=... sh release.sh v$PREPARED_VERSION"
     exit 0
 fi
 
@@ -180,15 +180,7 @@ ensure_github_remote() {
     else
         git remote add "$GITHUB_REMOTE" "$GITHUB_REMOTE_URL"
     fi
-    github_attempt=1
-    while ! gh repo view "$GITHUB_REPO" >/dev/null 2>&1; do
-        [ "$github_attempt" -lt 3 ] || {
-            echo "error: cannot access GitHub repository $GITHUB_REPO"
-            exit 1
-        }
-        sleep "$github_attempt"
-        github_attempt=$((github_attempt + 1))
-    done
+    gh repo view "$GITHUB_REPO" >/dev/null
     if git ls-files | grep -Eq '(^|/)leafiy-ui(/|$)'; then
         echo "error: leafiy-ui content is tracked inside Eddy; refusing GitHub publish"
         exit 1
@@ -205,7 +197,7 @@ github_remote_is_placeholder() {
 push_github_main() {
     remote_sha=$(git ls-remote "$GITHUB_REMOTE" refs/heads/main | awk 'NR == 1 { print $1 }')
     if [ -z "$remote_sha" ]; then
-        git push "$GITHUB_REMOTE" HEAD:main
+        git push -u "$GITHUB_REMOTE" HEAD:main
         return
     fi
     git fetch "$GITHUB_REMOTE" main
@@ -307,12 +299,12 @@ fi
 # Developer ID signing + notarization (required for public downloads without
 # Gatekeeper friction). One-time setup:
 #   1. Developer ID Application certificate for team Q478GZN2AV in your keychain
-#   2. the family-shared notary profile "daisy-notary" — notary credentials are
-#      per Apple ID/team, not per app, so every Leafiy app reuses daisy's:
-#      xcrun notarytool store-credentials "daisy-notary" \
+#   2. xcrun notarytool store-credentials "daisy-notary" \
 #          --apple-id tmly2006@gmail.com --team-id Q478GZN2AV --password <app-specific>
+#      ("daisy-notary" is the family-shared profile: notary credentials are per
+#       Apple ID/team, so eddy/fifi release.sh reuse this same profile)
 # Then release with:
-#   GITEA_TOKEN=... sh release.sh v1.1
+#   NOTARY_PROFILE="daisy-notary" GITEA_TOKEN=... sh release.sh v1.1
 APPLE_ID="${APPLE_ID:-tmly2006@gmail.com}"
 TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
@@ -336,7 +328,7 @@ if [ -z "$SIGN_IDENTITY" ]; then
     SIGN_IDENTITY="-"
     echo "warning: building ad-hoc signed DMGs because ALLOW_UNNOTARIZED=1"
 fi
-if { [ "$PUBLISH_TO_LEAFIY" = "1" ] || [ "$PUBLISH_TO_GITHUB" = "1" ] || [ -n "${GITEA_TOKEN:-}" ]; } && [ "$SIGN_IDENTITY" = "-" ]; then
+if { [ "$PUBLISH_TO_LEAFIY" = "1" ] || [ -n "${GITEA_TOKEN:-}" ]; } && [ "$SIGN_IDENTITY" = "-" ]; then
     echo "error: refusing to publish an ad-hoc signed DMG"
     echo "hint: publish only with a Developer ID identity and a successful notarization"
     exit 1
@@ -392,13 +384,13 @@ compile_app_icon_assets() { # $1 = source png, $2 = destination dir
 
 build_dmg() { # $1 = arch
     arch="$1"
-    scratch="$WORK_ROOT/swift-tests"
+    scratch="$WORK_ROOT/swift-$arch"
     echo "== building $arch =="
     swift build -c release --arch "$arch" --scratch-path "$scratch"
     bin_dir=$(swift build -c release --arch "$arch" --scratch-path "$scratch" --show-bin-path)
 
     app="$WORK_ROOT/$arch/Eddy.app"
-    rm -rf "${WORK_ROOT:?}/$arch"
+    rm -rf "$WORK_ROOT/$arch"
     mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
     cp Info.plist "$app/Contents/Info.plist"
     [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$VERSION_NUMBER" ] || {
@@ -416,10 +408,12 @@ build_dmg() { # $1 = arch
     if [ -d "$bin_dir/LeafiyUI_LeafiyUI.bundle" ]; then
         cp -R "$bin_dir/LeafiyUI_LeafiyUI.bundle" "$app/Contents/Resources/"
     fi
+
     [ -f "$app/Contents/Resources/AppIcon.icns" ] || { echo "error: AppIcon.icns is missing"; exit 1; }
     [ -f "$app/Contents/Resources/Assets.car" ] || { echo "error: Assets.car is missing"; exit 1; }
     [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist")" = "AppIcon" ] || { echo "error: CFBundleIconName must be AppIcon"; exit 1; }
     cmp -s "$MENU_ICON_SOURCE" "$app/Contents/Resources/eddy.png" || { echo "error: menu bar icon does not match $MENU_ICON_SOURCE"; exit 1; }
+
     if [ "$SIGN_IDENTITY" = "-" ]; then
         codesign --force --sign - "$app"
         if [ -n "$NOTARY_PROFILE" ]; then
@@ -439,7 +433,7 @@ build_dmg() { # $1 = arch
     ln -s /Applications "$staging/Applications"
     dmg="$ARTIFACT_DIR/eddy-$VERSION-$arch.dmg"
     rm -f "$dmg"
-    hdiutil create -volname "eddy" -srcfolder "$staging" -format UDZO -quiet "$dmg"
+    hdiutil create -volname "Eddy" -srcfolder "$staging" -format UDZO -quiet "$dmg"
     if [ "$SIGN_IDENTITY" != "-" ]; then
         codesign --force --timestamp --sign "$SIGN_IDENTITY" "$dmg"
         codesign --verify --verbose=2 "$dmg"
@@ -447,7 +441,7 @@ build_dmg() { # $1 = arch
     if [ -n "$NOTARY_PROFILE" ]; then
         notarize_dmg "$dmg"
     fi
-    rm -rf "${WORK_ROOT:?}/$arch"
+    rm -rf "$WORK_ROOT/$arch"
     echo "made $dmg"
 }
 
@@ -464,39 +458,29 @@ if [ -n "$(git status --porcelain)" ]; then
 fi
 HEAD_SHA=$(git rev-parse HEAD)
 
-[ "${REUSE_RELEASE_WORK:-0}" = "1" ] || rm -rf "$WORK_ROOT"
+rm -rf "$WORK_ROOT"
 mkdir -p "$WORK_ROOT" "$ARTIFACT_DIR"
 echo "== running release tests =="
 swift test -c release --scratch-path "$WORK_ROOT/swift-tests"
 arm64_dmg="$ARTIFACT_DIR/eddy-$VERSION-arm64.dmg"
 x86_dmg="$ARTIFACT_DIR/eddy-$VERSION-x86_64.dmg"
 source_commit_file="$ARTIFACT_DIR/.source-commit"
-artifacts_match_source=0
 if [ "${REBUILD_RELEASE:-0}" != "1" ] && \
+    [ -f "$arm64_dmg" ] && [ -f "$x86_dmg" ] && \
     [ -f "$source_commit_file" ] && [ "$(cat "$source_commit_file")" = "$HEAD_SHA" ]; then
-    artifacts_match_source=1
-fi
-needs_build=0
-for candidate_dmg in "$arm64_dmg" "$x86_dmg"; do
-    if [ "$artifacts_match_source" != "1" ] || [ ! -f "$candidate_dmg" ]; then
-        needs_build=1
-    fi
-done
-if [ "$needs_build" = "1" ]; then
-    compile_app_icon_assets "$APP_ICON_SOURCE" "$WORK_ROOT"
-fi
-for arch in arm64 x86_64; do
-    existing_dmg="$ARTIFACT_DIR/eddy-$VERSION-$arch.dmg"
-    if [ "$artifacts_match_source" = "1" ] && [ -f "$existing_dmg" ]; then
-        echo "== reusing existing notarized $arch $VERSION artifact from $HEAD_SHA =="
+    echo "== reusing existing notarized $VERSION artifacts from $HEAD_SHA =="
+    for existing_dmg in "$arm64_dmg" "$x86_dmg"; do
         hdiutil verify "$existing_dmg" >/dev/null
         codesign --verify --verbose=2 "$existing_dmg"
         spctl -a -vv -t open --context context:primary-signature "$existing_dmg"
-    else
-        build_dmg "$arch"
-    fi
-done
-printf '%s\n' "$HEAD_SHA" > "$source_commit_file"
+    done
+else
+    # App icon: compile the same AppIcon asset catalog Xcode uses.
+    compile_app_icon_assets "$APP_ICON_SOURCE" "$WORK_ROOT"
+    build_dmg arm64
+    build_dmg x86_64
+    printf '%s\n' "$HEAD_SHA" > "$source_commit_file"
+fi
 rm -rf "$WORK_ROOT"
 
 (
@@ -639,10 +623,6 @@ fi
 
 publish_github_release() {
     echo "== publishing $VERSION on GitHub =="
-    github_release_exists=0
-    if gh release view "$VERSION" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
-        github_release_exists=1
-    fi
     remote_tag=$(git ls-remote "$GITHUB_REMOTE" "refs/tags/$VERSION" | awk 'NR == 1 { print $1 }')
     remote_peeled=$(git ls-remote "$GITHUB_REMOTE" "refs/tags/$VERSION^{}" | awk 'NR == 1 { print $1 }')
     remote_tag_commit=${remote_peeled:-$remote_tag}
@@ -673,7 +653,7 @@ publish_github_release() {
     } > "$github_notes"
 
     github_assets="$ARTIFACT_DIR/eddy-$VERSION-arm64.dmg $ARTIFACT_DIR/eddy-$VERSION-x86_64.dmg $ARTIFACT_DIR/SHA256SUMS"
-    if [ "$github_release_exists" = "1" ]; then
+    if gh release view "$VERSION" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
         existing_names=$(gh release view "$VERSION" --repo "$GITHUB_REPO" --json assets --jq '.assets[].name')
         verify_dir="$ARTIFACT_DIR/.github-verify"
         rm -rf "$verify_dir"
@@ -730,7 +710,7 @@ except Exception:
 
 body="Image compressor for macOS 14+.\n\nRecommended install:\n\n    curl -fsSL $GITEA_URL/$OWNER_REPO/raw/branch/main/install.sh | sh\n\nManual install: download eddy-$VERSION-arm64.dmg (Apple Silicon) or eddy-$VERSION-x86_64.dmg (Intel), verify it with SHA256SUMS, then drag Eddy into Applications. Third-party notices and corresponding source are available in this repository."
 release_json=$(curl -sf -X POST -H "$AUTH" -H "Content-Type: application/json" \
-    -d "{\"tag_name\":\"$VERSION\",\"name\":\"eddy $VERSION\",\"body\":\"$body\",\"target_commitish\":\"$HEAD_SHA\"}" \
+    -d "{\"tag_name\":\"$VERSION\",\"name\":\"Eddy $VERSION\",\"body\":\"$body\",\"target_commitish\":\"$HEAD_SHA\"}" \
     "$API/releases") || { echo "error: failed to create release $VERSION on $API"; exit 1; }
 release_id=$(printf '%s' "$release_json" | json_id 2>/dev/null || true)
 [ -n "$release_id" ] || { echo "error: failed to parse release id from Gitea response"; exit 1; }
