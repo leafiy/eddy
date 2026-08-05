@@ -272,14 +272,18 @@ enum GIFCoder {
         return max(0, min(65535, Int((seconds * 100).rounded())))
     }
 
-    /// Loop count when the source carries a Netscape extension (0 = forever);
-    /// nil when it doesn't — then the output omits the extension too.
+    /// Raw Netscape repeat field for the output when the source carries the
+    /// extension (0 = forever); nil when it doesn't — then the output omits
+    /// the extension too. ImageIO reports the raw field as `raw + 1` for
+    /// finite loops (a play count) while 0 stays 0, so its value must be
+    /// converted back before writing: passing it through verbatim would add
+    /// one loop per re-encode.
     private static func containerLoopCount(source: CGImageSource) -> Int? {
         guard let properties = CGImageSourceCopyProperties(source, nil) as? [CFString: Any],
               let gif = properties[kCGImagePropertyGIFDictionary] as? [CFString: Any],
               let value = (gif[kCGImagePropertyGIFLoopCount] as? NSNumber)?.intValue
         else { return nil }
-        return value
+        return value > 0 ? value - 1 : 0
     }
 
     // MARK: - Histogram (pass 1)

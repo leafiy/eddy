@@ -409,7 +409,11 @@ final class GIFCompressionTests: XCTestCase {
             data.append(contentsOf: [0x21, 0xFF, 0x0B])
             data.append(contentsOf: Array("NETSCAPE2.0".utf8))
             data.append(contentsOf: [0x03, 0x01])
-            appendUInt16(&data, max(0, min(65535, loopCount)))
+            // ImageIO reads the raw Netscape repeat field as raw + 1 for
+            // finite loops (0 stays "forever"). Store loopCount - 1 so
+            // gifInfo reads back exactly `loopCount`, matching how ImageIO's
+            // own destination stored the old fixtures.
+            appendUInt16(&data, max(0, min(65535, loopCount > 0 ? loopCount - 1 : 0)))
             data.append(0x00)
         }
         for (buffer, delay) in zip(buffers, delays) {
