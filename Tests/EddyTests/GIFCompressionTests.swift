@@ -9,9 +9,9 @@ import XCTest
 /// entirely at the highest seam — `Compressor.optimize` (file in, file out).
 /// Invariants under any slider/width setting: frame count, per-frame delays,
 /// loop count, transparency, decodability, keep-if-smaller. Sample matrix:
-/// bloated typical animation (ImageIO-encoded, deliberately unoptimized),
-/// transparent sticker, static single frame, and a hand-crafted stubborn
-/// already-optimal file.
+/// bloated typical animation (hand-rolled full frames, deliberately
+/// unoptimized), transparent sticker, static single frame, and a
+/// hand-crafted stubborn already-optimal file.
 final class GIFCompressionTests: XCTestCase {
 
     private var tempDir: URL!
@@ -65,7 +65,7 @@ final class GIFCompressionTests: XCTestCase {
 
         let outcome = try Compressor.optimize(fileURL: url, quality: 0.8, format: .keep)
 
-        XCTAssertTrue(outcome.replaced, "an ImageIO-encoded original is bloated; the new encoder must beat it")
+        XCTAssertTrue(outcome.replaced, "a full-frame unoptimized original is bloated; the new encoder must beat it")
         let info = try gifInfo(url)
         XCTAssertEqual(info.frameCount, 8)
         XCTAssertEqual(info.loopCount, 3)
@@ -334,26 +334,181 @@ final class GIFCompressionTests: XCTestCase {
         return context.makeImage()
     }
 
-    /// Deliberately encodes through ImageIO's GIF destination: full frames,
-    /// no cross-frame optimization — a faithful stand-in for an unoptimized
-    /// real-world GIF.
+    /// Hand-rolls a deliberately unoptimized GIF89a fixture: full-canvas
+    /// frames, a 256-entry global color table, 8-bit LZW codes, disposal
+    /// "restore to background", zero cross-frame optimization — the bloated
+    /// typical GIF the acceptance criteria are specified against.
+    ///
+    /// Deliberately NOT ImageIO: modern ImageIO frame-optimizes GIF writes
+    /// (delta frames + minimal palette; a 160×120 8-frame sample lands at
+    /// ~2.9 KB, the format's lossless floor), which silently voided this
+    /// fixture's "bloated original" premise and made the keep-if-smaller /
+    /// ≥20%-shrink assertions unsatisfiable for any lossless encoder.
     private func writeGIF(frames: [CGImage], delays: [Double], loopCount: Int?, to url: URL) throws {
-        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(
-            url as CFURL, UTType.gif.identifier as CFString, frames.count, nil))
+        precondition(!frames.isEmpty && frames.count == delays.count)
+        var buffers = [RGBABuffer]()
+        for frame in frames {
+            buffers.append(try XCTUnwrap(RGBABuffer(image: frame), "fixture frame must rasterize"))
+        }
+        let width = buffers[0].width
+        let height = buffers[0].height
+        precondition(buffers.allSatisfy { $0.width == width && $0.height == height })
+
+        // Exact global palette in first-seen order; the >256-color noisy
+        // sample falls back to a fixed 3-3-2 posterize (opaque only).
+        var sawTransparency = false
+        var distinct = Set<UInt32>()
+        for buffer in buffers {
+            let pixels = buffer.pixels
+            for i in 0..<(width * height) {
+                let p = i * 4
+                if pixels[p + 3] < 128 {
+                    sawTransparency = true
+                } else {
+                    distinct.insert(
+                        UInt32(pixels[p]) | UInt32(pixels[p + 1]) << 8 | UInt32(pixels[p + 2]) << 16)
+                }
+            }
+        }
+        let posterized = distinct.count + (sawTransparency ? 1 : 0) > 256
+        var lookup: [UInt32: UInt8] = [:]
+        var paletteRGB = [UInt8]()
+        if posterized {
+            XCTAssertFalse(sawTransparency, "posterized fixture path reserves no transparent slot")
+            for i in 0..<256 {
+                paletteRGB.append(UInt8(((i >> 5) & 7) * 255 / 7))
+                paletteRGB.append(UInt8(((i >> 2) & 7) * 255 / 7))
+                paletteRGB.append(UInt8((i & 3) * 255 / 3))
+            }
+        } else {
+            for buffer in buffers {
+                let pixels = buffer.pixels
+                for i in 0..<(width * height) {
+                    let p = i * 4
+                    guard pixels[p + 3] >= 128 else { continue }
+                    let key = UInt32(pixels[p]) | UInt32(pixels[p + 1]) << 8 | UInt32(pixels[p + 2]) << 16
+                    if lookup[key] == nil {
+                        lookup[key] = UInt8(lookup.count)
+                        paletteRGB.append(contentsOf: [pixels[p], pixels[p + 1], pixels[p + 2]])
+                    }
+                }
+            }
+        }
+        let transparentIndex: UInt8? = (!posterized && sawTransparency) ? UInt8(lookup.count) : nil
+        paletteRGB.append(contentsOf: [UInt8](repeating: 0, count: 768 - paletteRGB.count))
+
+        var data = Data()
+        data.append(contentsOf: Array("GIF89a".utf8))
+        appendUInt16(&data, width)
+        appendUInt16(&data, height)
+        data.append(0xF7) // 256-entry global color table — naive encoders always burn the full table
+        data.append(0x00) // background index
+        data.append(0x00) // square pixels
+        data.append(contentsOf: paletteRGB)
         if let loopCount {
-            CGImageDestinationSetProperties(destination, [
-                kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: loopCount]
-            ] as CFDictionary)
+            data.append(contentsOf: [0x21, 0xFF, 0x0B])
+            data.append(contentsOf: Array("NETSCAPE2.0".utf8))
+            data.append(contentsOf: [0x03, 0x01])
+            appendUInt16(&data, max(0, min(65535, loopCount)))
+            data.append(0x00)
         }
-        for (frame, delay) in zip(frames, delays) {
-            CGImageDestinationAddImage(destination, frame, [
-                kCGImagePropertyGIFDictionary: [
-                    kCGImagePropertyGIFDelayTime: delay,
-                    kCGImagePropertyGIFUnclampedDelayTime: delay,
-                ]
-            ] as CFDictionary)
+        for (buffer, delay) in zip(buffers, delays) {
+            let pixels = buffer.pixels
+            var indices = [UInt8](repeating: 0, count: width * height)
+            for i in 0..<(width * height) {
+                let p = i * 4
+                if let t = transparentIndex, pixels[p + 3] < 128 {
+                    indices[i] = t
+                } else if posterized {
+                    indices[i] = UInt8(
+                        (Int(pixels[p]) >> 5) << 5 | (Int(pixels[p + 1]) >> 5) << 2 | Int(pixels[p + 2]) >> 6)
+                } else {
+                    let key = UInt32(pixels[p]) | UInt32(pixels[p + 1]) << 8 | UInt32(pixels[p + 2]) << 16
+                    indices[i] = lookup[key]!
+                }
+            }
+            data.append(contentsOf: [0x21, 0xF9, 0x04])
+            data.append(2 << 2 | (transparentIndex != nil ? 1 : 0)) // dispose to background
+            appendUInt16(&data, max(0, min(65535, Int((delay * 100).rounded()))))
+            data.append(transparentIndex ?? 0)
+            data.append(0x00)
+            data.append(0x2C)
+            appendUInt16(&data, 0)
+            appendUInt16(&data, 0)
+            appendUInt16(&data, width)
+            appendUInt16(&data, height)
+            data.append(0x00) // no local color table, not interlaced
+            data.append(8)    // minimum LZW code size — always 8, like naive encoders
+            let encoded = fixtureLZW(indices)
+            var i = 0
+            while i < encoded.count {
+                let n = min(255, encoded.count - i)
+                data.append(UInt8(n))
+                data.append(contentsOf: encoded[i..<(i + n)])
+                i += n
+            }
+            data.append(0x00)
         }
-        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        data.append(0x3B)
+        try data.write(to: url)
+    }
+
+    /// GIF LZW at a fixed 8-bit minimum code size. Fixture-local on purpose:
+    /// the production encoder's LZW stays private, and the suite's pixel
+    /// round-trip assertions decode fixtures through ImageIO, so a codec bug
+    /// here surfaces loudly instead of cancelling out against the encoder.
+    private func fixtureLZW(_ pixels: [UInt8]) -> [UInt8] {
+        let clearCode = 256
+        let endCode = 257
+        var out = [UInt8]()
+        out.reserveCapacity(pixels.count)
+        var bitBuffer: UInt32 = 0
+        var bitCount = 0
+        var codeSize = 9
+        var nextCode = 258
+        var table = [UInt32: Int](minimumCapacity: 1 << 12)
+
+        func emit(_ code: Int) {
+            bitBuffer |= UInt32(code) << bitCount
+            bitCount += codeSize
+            while bitCount >= 8 {
+                out.append(UInt8(bitBuffer & 0xFF))
+                bitBuffer >>= 8
+                bitCount -= 8
+            }
+            if nextCode >= (1 << codeSize), codeSize < 12 { codeSize += 1 }
+        }
+
+        emit(clearCode)
+        var current = Int(pixels[0])
+        for i in 1..<pixels.count {
+            let pixel = Int(pixels[i])
+            let key = UInt32(current) << 8 | UInt32(pixel)
+            if let code = table[key] {
+                current = code
+            } else {
+                emit(current)
+                if nextCode >= 4095 {
+                    emit(clearCode)
+                    table.removeAll(keepingCapacity: true)
+                    nextCode = 258
+                    codeSize = 9
+                } else {
+                    table[key] = nextCode
+                    nextCode += 1
+                }
+                current = pixel
+            }
+        }
+        emit(current)
+        emit(endCode)
+        if bitCount > 0 { out.append(UInt8(bitBuffer & 0xFF)) }
+        return out
+    }
+
+    private func appendUInt16(_ data: inout Data, _ value: Int) {
+        data.append(UInt8(value & 0xFF))
+        data.append(UInt8((value >> 8) & 0xFF))
     }
 
     private struct GIFInfo {
