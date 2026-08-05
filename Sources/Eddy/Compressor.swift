@@ -224,7 +224,11 @@ enum Compressor {
     /// True when `maxWidth` would actually shrink this file — lossless
     /// candidates (which can't resize) are only valid when it wouldn't.
     private static func needsResize(_ fileURL: URL, _ maxWidth: Int) -> Bool {
-        maxWidth > 0 && effectivePixelWidth(of: fileURL) > maxWidth
+        if fileURL.pathExtension.lowercased() == "webp",
+           let size = AnimatedWebPCoder.canvasSize(fileURL) {
+            return maxWidth > 0 && size.width > maxWidth
+        }
+        return maxWidth > 0 && effectivePixelWidth(of: fileURL) > maxWidth
     }
 
     /// pngquant-style lossy palette quantization; keep-if-smaller upstream
@@ -265,8 +269,9 @@ enum Compressor {
 
     /// Two candidates, smaller wins:
     /// 1. lossless: RIFF-level EXIF/XMP/ICC strip, bitstream untouched
-    ///    (also the only path for animated WebP; skipped when resizing)
-    /// 2. lossy: bundled libwebp re-encode at the quality slider
+    /// 2. lossy: bundled libwebp re-encode at the quality slider. Animated
+    ///    files are decoded and re-encoded frame by frame with timing, loops
+    ///    and transparency preserved; resize applies to the whole canvas.
     /// Falls back to the untouched original ("0%") when neither is smaller —
     /// typical for files that were already produced by an optimizer.
     private static func recompressWebP(_ fileURL: URL, _ quality: Double, _ maxWidth: Int, _ tempDir: URL) throws -> URL {
@@ -280,10 +285,20 @@ enum Compressor {
             best = (url, strippedData.count)
         }
 
-        if frameCount(of: fileURL) <= 1,
-           let frame = try? decodedFrame(fileURL, maxWidth: maxWidth),
-           let encoded = try? WebPEncoder.encode(frame, quality: quality),
-           best == nil || encoded.count < best!.size {
+        let frames = frameCount(of: fileURL)
+        let encoded: Data?
+        if frames > 1 {
+            encoded = try? AnimatedWebPCoder.recompress(
+                fileURL: fileURL,
+                quality: quality,
+                maxWidth: maxWidth
+            )
+        } else if let frame = try? decodedFrame(fileURL, maxWidth: maxWidth) {
+            encoded = try? WebPEncoder.encode(frame, quality: quality)
+        } else {
+            encoded = nil
+        }
+        if let encoded, best == nil || encoded.count < best!.size {
             let url = tempDir.appendingPathComponent("out.webp")
             try encoded.write(to: url)
             best = (url, encoded.count)
@@ -458,6 +473,9 @@ enum Compressor {
     }
 
     private static func frameCount(of fileURL: URL) -> Int {
+        if fileURL.pathExtension.lowercased() == "webp" {
+            return AnimatedWebPCoder.frameCount(fileURL)
+        }
         guard let source = CGImageSourceCreateWithURL(fileURL as CFURL, nil) else { return 1 }
         return max(CGImageSourceGetCount(source), 1)
     }

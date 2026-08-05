@@ -112,4 +112,20 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertTrue(store.entries.isEmpty)
         XCTAssertTrue(HistoryStore(fileURL: fileURL).entries.isEmpty)
     }
+
+    func testUpdatingOutputPathPersistsAfterAlphaConversion() {
+        let fileURL = temporaryFileURL()
+        defer { try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent()) }
+
+        let store = HistoryStore(fileURL: fileURL)
+        let original = entry("subject")
+        store.record(original)
+        store.updateOutputPath(original.id, path: "/tmp/subject-background.png")
+
+        XCTAssertEqual(store.entries.first?.path, "/tmp/subject-background.png")
+        XCTAssertEqual(
+            HistoryStore(fileURL: fileURL).entries.first?.path,
+            "/tmp/subject-background.png"
+        )
+    }
 }

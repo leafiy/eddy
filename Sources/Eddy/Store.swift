@@ -56,6 +56,12 @@ struct ImageItem: Identifiable {
     }
 }
 
+struct ImageEditorRequest: Identifiable {
+    let id = UUID()
+    let item: ImageItem
+    let intent: ImageEditorIntent
+}
+
 @MainActor
 final class Store: ObservableObject {
     static let shared = Store()
@@ -78,13 +84,19 @@ final class Store: ObservableObject {
         updateDockBadge()
     }
 
-    // MARK: - Restore & Crop
+    // MARK: - Restore & Image Editing
 
-    /// The row currently being cropped; ContentView presents the crop sheet.
-    @Published var croppingItem: ImageItem?
+    /// The row and initial action for the shared image-editing sheet.
+    @Published var editorRequest: ImageEditorRequest?
 
     func beginCrop(_ id: UUID) {
-        croppingItem = items.first { $0.id == id && $0.isCroppable }
+        guard let item = items.first(where: { $0.id == id && $0.isCroppable }) else { return }
+        editorRequest = ImageEditorRequest(item: item, intent: .edit)
+    }
+
+    func beginBackgroundRemoval(_ id: UUID) {
+        guard let item = items.first(where: { $0.id == id && $0.isCroppable }) else { return }
+        editorRequest = ImageEditorRequest(item: item, intent: .removeBackground)
     }
 
     /// One-step restore of the row's Intake Original (no confirmation,
@@ -170,7 +182,7 @@ final class Store: ObservableObject {
                     }
                     do {
                         let result = try Cropper.crop(fileURL: fileURL, spec: spec, quality: quality)
-                        return (backup, result, Compressor.thumbnail(for: fileURL))
+                        return (backup, result, Compressor.thumbnail(for: result.outputURL))
                     } catch {
                         // A fresh backup without a successful crop is noise;
                         // pre-existing backups still guard earlier operations.
@@ -180,12 +192,16 @@ final class Store: ObservableObject {
                 }.value
                 guard let self else { return }
                 self.update(id) {
+                    $0.url = result.outputURL
                     $0.backup = backup
                     $0.finalBytes = result.bytes
                     $0.dimensions = "\(result.width)×\(result.height)"
                     $0.thumbnail = thumbnail
                 }
-                self.showToast(L("Cropped and saved"))
+                if let entryID = item.historyEntryID, result.outputURL != fileURL {
+                    HistoryStore.shared.updateOutputPath(entryID, path: result.outputURL.path)
+                }
+                self.showToast(L("Changes saved"))
             } catch {
                 self?.showToast(error.localizedDescription, seconds: 5)
             }

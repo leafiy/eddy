@@ -2,17 +2,27 @@ import AppKit
 import LeafiyUI
 import SwiftUI
 
-/// The crop sheet: one selection rectangle over the image that drags inward
-/// to trim and outward to pad (Extension Background fills the overhang),
-/// with the two fixed Decorations as toggles. Saving hands a CropSpec back
-/// and the file is overwritten in place — one-step, no save-as.
+enum ImageEditorIntent {
+    case edit
+    case removeBackground
+}
+
+/// The non-destructive image editor. Crop/padding, subject lifting, rotation,
+/// border and shadow are previewed together, share one local undo stack, and
+/// are committed to the file only when the user saves.
 struct CropView: View {
     let item: ImageItem
+    let intent: ImageEditorIntent
     let onSave: (CropSpec) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Orientation-normalized source and the currently rendered edit preview.
     @State private var image: CGImage?
+    @State private var displayedImage: CGImage?
+    /// Cached Vision result in source orientation. Undoing background removal
+    /// keeps the cache so enabling it again is instant.
+    @State private var foregroundImage: CGImage?
     /// Selection in image pixel coordinates, top-left origin; may extend
     /// beyond the image bounds up to the working area.
     @State private var selection: CGRect = .zero
@@ -20,6 +30,11 @@ struct CropView: View {
     @State private var customColor: Color = .white
     @State private var addBorder = false
     @State private var addShadow = false
+    @State private var rotation: ImageRotation = .none
+    @State private var isBackgroundRemoved = false
+    @State private var isRemovingBackground = false
+    @State private var editorError: String?
+    @State private var undoStack: [EditSnapshot] = []
 
     @State private var activeHandle: Handle?
     @State private var dragStartSelection: CGRect?
@@ -30,9 +45,26 @@ struct CropView: View {
     /// How far beyond the image the selection may extend, as a fraction of
     /// the longer image side per edge.
     private static let expansionAllowance: CGFloat = 0.5
+    private static let maximumUndoDepth = 100
 
     private var fileExtension: String { item.url.pathExtension.lowercased() }
-    private var allowsTransparency: Bool { Cropper.supportsAlpha(fileExtension) }
+    private var allowsTransparency: Bool {
+        isBackgroundRemoved || Cropper.supportsAlpha(fileExtension)
+    }
+
+    private enum BackgroundChoice: Hashable {
+        case white, black, transparent, custom
+    }
+
+    private struct EditSnapshot {
+        let selection: CGRect
+        let background: BackgroundChoice
+        let customColor: Color
+        let addBorder: Bool
+        let addShadow: Bool
+        let rotation: ImageRotation
+        let isBackgroundRemoved: Bool
+    }
 
     var body: some View {
         VStack(spacing: .zero) {
@@ -50,9 +82,21 @@ struct CropView: View {
             }.value
             isAnimatedAsset = animated
             image = loaded
+            displayedImage = loaded
             if let loaded {
                 selection = CGRect(x: 0, y: 0, width: loaded.width, height: loaded.height)
+                if intent == .removeBackground, !animated {
+                    await removeBackground()
+                }
             }
+        }
+        .alert(L("Image Editing Failed"), isPresented: Binding(
+            get: { editorError != nil },
+            set: { if !$0 { editorError = nil } }
+        )) {
+            Button(L("OK"), role: .cancel) { editorError = nil }
+        } message: {
+            Text(editorError ?? "")
         }
     }
 
@@ -65,7 +109,7 @@ struct CropView: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             if isAnimatedAsset {
-                Text(L("All frames are cropped identically — animation is preserved"))
+                Text(L("All frames receive the same edits — animation is preserved"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -73,6 +117,50 @@ struct CropView: View {
             Text("\(Int(selection.width.rounded())) × \(Int(selection.height.rounded())) px")
                 .font(.body.monospacedDigit())
                 .foregroundStyle(.secondary)
+
+            Divider().frame(height: 18)
+
+            ControlGroup {
+                Button { undo() } label: {
+                    Label(L("Undo"), systemImage: "arrow.uturn.backward")
+                }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(undoStack.isEmpty || isRemovingBackground)
+                .help(L("Undo last edit (⌘Z)"))
+
+                Button { rotate(.left) } label: {
+                    Label(L("Rotate Left"), systemImage: "rotate.left")
+                }
+                .disabled(displayedImage == nil || isRemovingBackground)
+                .help(L("Rotate Left"))
+
+                Button { rotate(.right) } label: {
+                    Label(L("Rotate Right"), systemImage: "rotate.right")
+                }
+                .disabled(displayedImage == nil || isRemovingBackground)
+                .help(L("Rotate Right"))
+            }
+            .labelStyle(.iconOnly)
+            .controlSize(.small)
+
+            if isRemovingBackground {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 130)
+                    .help(L("Removing background…"))
+            } else {
+                Button {
+                    Task { await removeBackground() }
+                } label: {
+                    Label(
+                        isBackgroundRemoved ? L("Background Removed") : L("Remove Background"),
+                        systemImage: isBackgroundRemoved ? "checkmark" : "person.crop.rectangle"
+                    )
+                }
+                .controlSize(.small)
+                .disabled(image == nil || isAnimatedAsset || isBackgroundRemoved)
+                .help(backgroundRemovalHelp)
+            }
         }
         .padding(.horizontal, LeafiyDesign.Spacing.m)
         .padding(.vertical, LeafiyDesign.Spacing.s)
@@ -82,7 +170,7 @@ struct CropView: View {
 
     private var canvas: some View {
         GeometryReader { proxy in
-            if let image {
+            if let image = displayedImage {
                 canvasContent(image: image, viewSize: proxy.size)
             } else {
                 ProgressView()
@@ -91,6 +179,7 @@ struct CropView: View {
         }
         .background(Color(nsColor: .underPageBackgroundColor))
         .padding(LeafiyDesign.Spacing.m)
+        .allowsHitTesting(!isRemovingBackground)
     }
 
     /// View-space geometry for one layout pass: the working area (image
@@ -151,16 +240,19 @@ struct CropView: View {
                 .interpolation(.high)
                 .frame(width: imageRect.width, height: imageRect.height)
                 .overlay {
-                    if addBorder {
+                    // Foreground borders are baked from Vision's alpha mask by
+                    // rebuildDisplayedImage(), so only regular images need the
+                    // legacy rectangular image-edge overlay here.
+                    if addBorder, !isBackgroundRemoved {
                         Rectangle()
                             .strokeBorder(Color(white: 0.62), lineWidth: max(unit, 0.5))
                     }
                 }
                 .shadow(
-                    color: addShadow ? .black.opacity(0.3) : .clear,
-                    radius: addShadow ? 10 * unit : 0,
+                    color: addShadow ? .black.opacity(Cropper.standardShadowOpacity) : .clear,
+                    radius: addShadow ? Cropper.standardShadowBlur * unit : 0,
                     x: 0,
-                    y: addShadow ? 3 * unit : 0
+                    y: addShadow ? Cropper.standardShadowOffset * unit : 0
                 )
                 .offset(x: imageRect.minX, y: imageRect.minY)
 
@@ -240,8 +332,12 @@ struct CropView: View {
             .onChanged { value in
                 if activeHandle == nil {
                     let selectionRect = map.toView(selection)
-                    activeHandle = hitTest(value.startLocation, selectionRect: selectionRect)
+                    guard let handle = hitTest(value.startLocation, selectionRect: selectionRect) else {
+                        return
+                    }
+                    activeHandle = handle
                     dragStartSelection = selection
+                    recordUndo()
                 }
                 guard let handle = activeHandle, let start = dragStartSelection else { return }
                 let dx = value.translation.width / map.scale
@@ -309,10 +405,6 @@ struct CropView: View {
 
     // MARK: - Controls
 
-    private enum BackgroundChoice: Hashable {
-        case white, black, transparent, custom
-    }
-
     private var controls: some View {
         HStack(spacing: LeafiyDesign.Spacing.m) {
             Text(L("Extension background"))
@@ -325,9 +417,8 @@ struct CropView: View {
                 .help(allowsTransparency
                     ? L("Transparent")
                     : L("This format cannot store transparency"))
-            ColorPicker("", selection: $customColor, supportsOpacity: false)
+            ColorPicker("", selection: customColorBinding, supportsOpacity: false)
                 .labelsHidden()
-                .onChange(of: customColor) { _, _ in background = .custom }
                 .overlay(alignment: .bottom) {
                     if background == .custom {
                         selectionDot
@@ -337,24 +428,26 @@ struct CropView: View {
 
             Divider().frame(height: 16)
 
-            Toggle(L("Border"), isOn: $addBorder)
+            Toggle(L("Border"), isOn: borderBinding)
                 .toggleStyle(.checkbox)
-            Toggle(L("Shadow"), isOn: $addShadow)
+            Toggle(L("Shadow"), isOn: shadowBinding)
                 .toggleStyle(.checkbox)
 
             Spacer()
 
             Button(L("Reset Selection")) {
-                if let image {
-                    selection = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+                if let image = displayedImage {
+                    let fullImage = CGRect(x: 0, y: 0, width: image.width, height: image.height)
+                    guard selection != fullImage else { return }
+                    performEdit { selection = fullImage }
                 }
             }
-            .disabled(image == nil)
+            .disabled(displayedImage == nil || isRemovingBackground)
             Button(L("Cancel")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
-            Button(L("Crop and Save")) { save() }
+            Button(L("Save Changes")) { save() }
                 .keyboardShortcut(.defaultAction)
-                .disabled(image == nil)
+                .disabled(displayedImage == nil || isRemovingBackground)
         }
         .padding(.horizontal, LeafiyDesign.Spacing.m)
         .padding(.vertical, LeafiyDesign.Spacing.s)
@@ -362,7 +455,8 @@ struct CropView: View {
 
     private func swatch(_ choice: BackgroundChoice, fill: Color, label: String) -> some View {
         Button {
-            background = choice
+            guard background != choice else { return }
+            performEdit { background = choice }
         } label: {
             ZStack {
                 if choice == .transparent {
@@ -390,6 +484,142 @@ struct CropView: View {
             .offset(y: 5)
     }
 
+    private var customColorBinding: Binding<Color> {
+        Binding(
+            get: { customColor },
+            set: { newValue in
+                performEdit {
+                    customColor = newValue
+                    background = .custom
+                }
+            }
+        )
+    }
+
+    private var borderBinding: Binding<Bool> {
+        Binding(
+            get: { addBorder },
+            set: { newValue in
+                guard newValue != addBorder else { return }
+                performEdit { addBorder = newValue }
+                rebuildDisplayedImage()
+            }
+        )
+    }
+
+    private var shadowBinding: Binding<Bool> {
+        Binding(
+            get: { addShadow },
+            set: { newValue in
+                guard newValue != addShadow else { return }
+                performEdit { addShadow = newValue }
+            }
+        )
+    }
+
+    // MARK: - Editing & undo
+
+    private var backgroundRemovalHelp: String {
+        if isAnimatedAsset {
+            return L("Background removal is unavailable for animated images")
+        }
+        if isBackgroundRemoved {
+            return L("Use Undo to restore the background")
+        }
+        return L("Remove the background with Apple Vision")
+    }
+
+    private func snapshot() -> EditSnapshot {
+        EditSnapshot(
+            selection: selection,
+            background: background,
+            customColor: customColor,
+            addBorder: addBorder,
+            addShadow: addShadow,
+            rotation: rotation,
+            isBackgroundRemoved: isBackgroundRemoved
+        )
+    }
+
+    private func recordUndo() {
+        if undoStack.count == Self.maximumUndoDepth {
+            undoStack.removeFirst()
+        }
+        undoStack.append(snapshot())
+    }
+
+    private func performEdit(_ change: () -> Void) {
+        recordUndo()
+        change()
+    }
+
+    private func undo() {
+        guard let previous = undoStack.popLast() else { return }
+        selection = previous.selection
+        background = previous.background
+        customColor = previous.customColor
+        addBorder = previous.addBorder
+        addShadow = previous.addShadow
+        rotation = previous.rotation
+        isBackgroundRemoved = previous.isBackgroundRemoved
+        rebuildDisplayedImage()
+    }
+
+    private func rotate(_ direction: ImageRotationDirection) {
+        guard let current = displayedImage else { return }
+        performEdit {
+            selection = Cropper.rotate(
+                selection,
+                in: CGSize(width: current.width, height: current.height),
+                direction: direction
+            ).integral
+            rotation = rotation.rotated(direction)
+        }
+        rebuildDisplayedImage()
+    }
+
+    @MainActor
+    private func removeBackground() async {
+        guard let image, !isAnimatedAsset, !isBackgroundRemoved, !isRemovingBackground else {
+            return
+        }
+
+        if foregroundImage == nil {
+            isRemovingBackground = true
+            do {
+                foregroundImage = try await Task.detached(priority: .userInitiated) {
+                    try BackgroundRemover.removeBackground(from: image)
+                }.value
+            } catch {
+                editorError = error.localizedDescription
+                isRemovingBackground = false
+                return
+            }
+            isRemovingBackground = false
+        }
+
+        recordUndo()
+        isBackgroundRemoved = true
+        // A removed background should be visible and exportable by default.
+        background = .transparent
+        rebuildDisplayedImage()
+    }
+
+    private func rebuildDisplayedImage() {
+        guard let source = isBackgroundRemoved ? foregroundImage : image else {
+            displayedImage = nil
+            return
+        }
+        do {
+            let rotated = try Cropper.rotate(source, rotation: rotation)
+            displayedImage = isBackgroundRemoved && addBorder
+                ? try Cropper.addingSubjectBorder(to: rotated)
+                : rotated
+        } catch {
+            editorError = error.localizedDescription
+        }
+    }
+
     // MARK: - Saving
 
     private func save() {
@@ -410,7 +640,9 @@ struct CropView: View {
             rect: selection.integral,
             background: cgBackground,
             border: addBorder,
-            shadow: addShadow
+            shadow: addShadow,
+            rotation: rotation,
+            foregroundImage: isBackgroundRemoved ? foregroundImage : nil
         ))
         dismiss()
     }

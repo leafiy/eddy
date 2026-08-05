@@ -68,7 +68,7 @@ GIF 进 GIF 出、原地替换,沿用 keep-if-smaller 语义。app 内置一个�
 
 ## Out of Scope
 
-- 动画 WebP / APNG / 视频格式的输出或互转(明确推迟;keep 语义之外的动画目标格式后续另立 spec)。
+- APNG / 视频格式的输出或互转(动画 WebP 已在后续实现中采用本 spec 的同一组动画不变量)。
 - 任何 UI 变更(新滑杆、GIF 专属设置、进度细化)。
 - GIF 局部(逐帧)调色板的极限优化——全局调色板 + keep-if-smaller 已保证不产生劣化结果。
 - 对损坏/畸形 GIF 的修复;解码失败按现有错误路径处理。

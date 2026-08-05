@@ -85,9 +85,9 @@ struct ContentView: View {
             } message: {
                 Text(L("Quick Share uploads compressed files to your own object storage. Add your storage account in Settings → Share first."))
             }
-            .sheet(item: $store.croppingItem) { item in
-                CropView(item: item) { spec in
-                    store.applyCrop(item.id, spec: spec)
+            .sheet(item: $store.editorRequest) { request in
+                CropView(item: request.item, intent: request.intent) { spec in
+                    store.applyCrop(request.item.id, spec: spec)
                 }
             }
             .toolbar { toolbarContent }
@@ -274,6 +274,10 @@ struct ItemRow: View {
             Divider()
             Button(L("Crop…")) {
                 Store.shared.beginCrop(item.id)
+            }
+            .disabled(!item.isCroppable)
+            Button(L("Remove Background…")) {
+                Store.shared.beginBackgroundRemoval(item.id)
             }
             .disabled(!item.isCroppable)
             Button(L("Restore Original")) {

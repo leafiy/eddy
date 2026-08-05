@@ -15,7 +15,8 @@
 # LEAFIY_ADMIN_PASSWORD can use the HTTPS admin API instead. GitHub uses the
 # existing `gh` login or GH_TOKEN; GITEA_TOKEN additionally mirrors to Gitea.
 set -eu
-cd "$(dirname "$0")"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+cd "$SCRIPT_DIR"
 
 command -v swift >/dev/null 2>&1 || { echo "error: needs macOS with Xcode command line tools"; exit 1; }
 APP_ICON_SOURCE="eddy.png"
@@ -137,8 +138,17 @@ GITHUB_REMOTE_URL="${GITHUB_REMOTE_URL:-git@github.com:$GITHUB_REPO.git}"
 PUBLISH_TO_GITHUB="${PUBLISH_TO_GITHUB:-1}"
 AUTO_COMMIT_RELEASE="${AUTO_COMMIT_RELEASE:-1}"
 BUILD_ROOT="${BUILD_ROOT:-"$PWD/build.noindex"}"
+mkdir -p "$BUILD_ROOT"
+BUILD_ROOT=$(CDPATH= cd -- "$BUILD_ROOT" && pwd -P)
 WORK_ROOT="${RELEASE_WORK_ROOT:-"$BUILD_ROOT/release-work/$VERSION"}"
 ARTIFACT_DIR="${ARTIFACT_DIR:-"$BUILD_ROOT/release/$VERSION"}"
+# Keep SwiftPM's dependency checkouts and architecture-specific build products
+# outside WORK_ROOT. WORK_ROOT is disposable and versioned, while this cache is
+# safe to reuse across tests, architectures, and releases; SwiftPM invalidates
+# stale products from package/source fingerprints.
+SWIFT_SCRATCH="${RELEASE_SWIFT_SCRATCH:-"$BUILD_ROOT/swift-release"}"
+mkdir -p "$SWIFT_SCRATCH"
+SWIFT_SCRATCH=$(CDPATH= cd -- "$SWIFT_SCRATCH" && pwd -P)
 API="$GITEA_URL/api/v1/repos/$OWNER_REPO"
 AUTH="Authorization: token ${GITEA_TOKEN:-}"
 LEAFIY_PUBLISH_URL="${LEAFIY_PUBLISH_URL:-https://leafiy.com/admin-api}"
@@ -384,10 +394,14 @@ compile_app_icon_assets() { # $1 = source png, $2 = destination dir
 
 build_dmg() { # $1 = arch
     arch="$1"
-    scratch="$WORK_ROOT/swift-$arch"
     echo "== building $arch =="
-    swift build -c release --arch "$arch" --scratch-path "$scratch"
-    bin_dir=$(swift build -c release --arch "$arch" --scratch-path "$scratch" --show-bin-path)
+    swift build -c release --arch "$arch" \
+        --scratch-path "$SWIFT_SCRATCH" \
+        --disable-automatic-resolution
+    bin_dir=$(swift build -c release --arch "$arch" \
+        --scratch-path "$SWIFT_SCRATCH" \
+        --disable-automatic-resolution \
+        --show-bin-path)
 
     app="$WORK_ROOT/$arch/Eddy.app"
     rm -rf "$WORK_ROOT/$arch"
@@ -461,7 +475,9 @@ HEAD_SHA=$(git rev-parse HEAD)
 rm -rf "$WORK_ROOT"
 mkdir -p "$WORK_ROOT" "$ARTIFACT_DIR"
 echo "== running release tests =="
-swift test -c release --scratch-path "$WORK_ROOT/swift-tests"
+swift test -c release \
+    --scratch-path "$SWIFT_SCRATCH" \
+    --disable-automatic-resolution
 arm64_dmg="$ARTIFACT_DIR/eddy-$VERSION-arm64.dmg"
 x86_dmg="$ARTIFACT_DIR/eddy-$VERSION-x86_64.dmg"
 source_commit_file="$ARTIFACT_DIR/.source-commit"

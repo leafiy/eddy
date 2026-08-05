@@ -123,6 +123,15 @@ final class HistoryStore: ObservableObject {
         persist()
     }
 
+    /// Image editing can introduce alpha and move an opaque source to a PNG.
+    /// Keep the existing compression record pointed at the live output so its
+    /// reveal, re-compress and restore actions continue to work.
+    func updateOutputPath(_ id: HistoryEntry.ID, path: String) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        entries[index].path = path
+        persist()
+    }
+
     func clear() {
         for entry in entries {
             originals.deleteBackup(entry.backupFilename)

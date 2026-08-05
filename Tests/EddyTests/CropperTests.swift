@@ -104,6 +104,125 @@ final class CropperTests: XCTestCase {
         XCTAssertEqual(siblings.sorted(), ["inplace.png"], "no staging residue")
     }
 
+    func testQuarterTurnRotatesPixelsAndDimensions() throws {
+        let image = try XCTUnwrap(makeImage(width: 2, height: 3) { x, y in
+            switch (x, y) {
+            case (0, 0): return (255, 0, 0, 255)       // top-left
+            case (1, 0): return (0, 255, 0, 255)       // top-right
+            case (0, 2): return (0, 0, 255, 255)       // bottom-left
+            case (1, 2): return (255, 255, 0, 255)     // bottom-right
+            default:     return (0, 0, 0, 255)
+            }
+        })
+
+        let right = try Cropper.rotate(image, rotation: .right)
+        XCTAssertEqual(right.width, 3)
+        XCTAssertEqual(right.height, 2)
+        let decoded = try XCTUnwrap(decodeRGBA(right))
+        XCTAssertEqual(pixel(decoded, x: 0, y: 0), [0, 0, 255, 255])
+        XCTAssertEqual(pixel(decoded, x: 2, y: 0), [255, 0, 0, 255])
+        XCTAssertEqual(pixel(decoded, x: 0, y: 1), [255, 255, 0, 255])
+        XCTAssertEqual(pixel(decoded, x: 2, y: 1), [0, 255, 0, 255])
+    }
+
+    func testCropRectangleFollowsRotation() {
+        let rect = CGRect(x: 10, y: 5, width: 30, height: 20)
+        let size = CGSize(width: 100, height: 50)
+
+        XCTAssertEqual(
+            Cropper.rotate(rect, in: size, direction: .right),
+            CGRect(x: 25, y: 10, width: 20, height: 30)
+        )
+        XCTAssertEqual(
+            Cropper.rotate(rect, in: size, direction: .left),
+            CGRect(x: 5, y: 60, width: 20, height: 30)
+        )
+    }
+
+    func testForegroundRemovalConvertsOpaqueFormatToPNG() throws {
+        let original = try XCTUnwrap(makeImage(width: 4, height: 4) { _, _ in
+            (255, 255, 255, 255)
+        })
+        let file = try writeJPEG(original, name: "subject.jpg")
+        let foreground = try XCTUnwrap(makeImage(width: 4, height: 4) { x, _ in
+            x < 2 ? (255, 0, 0, 255) : (0, 0, 0, 0)
+        })
+
+        let result = try Cropper.crop(
+            fileURL: file,
+            spec: CropSpec(
+                rect: CGRect(x: 0, y: 0, width: 4, height: 4),
+                background: nil,
+                border: false,
+                shadow: false,
+                foregroundImage: foreground
+            ),
+            quality: 1.0
+        )
+
+        XCTAssertEqual(result.outputURL.pathExtension, "png")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
+        let decoded = try XCTUnwrap(decodeRGBA(result.outputURL))
+        XCTAssertEqual(pixel(decoded, x: 0, y: 2), [255, 0, 0, 255])
+        XCTAssertEqual(pixel(decoded, x: 3, y: 2)[3], 0)
+    }
+
+    func testForegroundBorderFollowsSubjectAlphaInsteadOfImageBounds() throws {
+        let foreground = try XCTUnwrap(makeImage(width: 11, height: 11) { x, y in
+            (4...6).contains(x) && (4...6).contains(y)
+                ? (255, 0, 0, 255)
+                : (0, 0, 0, 0)
+        })
+
+        let rendered = try Cropper.render(
+            foreground,
+            spec: CropSpec(
+                rect: CGRect(x: 0, y: 0, width: 11, height: 11),
+                background: nil,
+                border: true,
+                shadow: false,
+                foregroundImage: foreground
+            )
+        )
+        let decoded = try XCTUnwrap(decodeRGBA(rendered))
+
+        XCTAssertEqual(pixel(decoded, x: 0, y: 0)[3], 0, "canvas corner stays transparent")
+        XCTAssertEqual(pixel(decoded, x: 0, y: 5)[3], 0, "image edge does not receive a rectangular border")
+        XCTAssertGreaterThan(pixel(decoded, x: 3, y: 5)[3], 0, "outline appears beside the subject")
+        XCTAssertEqual(pixel(decoded, x: 5, y: 5), [255, 0, 0, 255], "subject stays above its outline")
+    }
+
+    func testForegroundShadowFollowsSubjectAlphaInsteadOfImageBounds() throws {
+        let foreground = try XCTUnwrap(makeImage(width: 40, height: 40) { x, y in
+            (18...21).contains(x) && (18...21).contains(y)
+                ? (0, 128, 255, 255)
+                : (0, 0, 0, 0)
+        })
+
+        let rendered = try Cropper.render(
+            foreground,
+            spec: CropSpec(
+                rect: CGRect(x: 0, y: 0, width: 40, height: 40),
+                background: nil,
+                border: false,
+                shadow: true,
+                foregroundImage: foreground
+            )
+        )
+        let decoded = try XCTUnwrap(decodeRGBA(rendered))
+
+        XCTAssertEqual(pixel(decoded, x: 0, y: 0)[3], 0, "canvas corner does not cast a rectangular shadow")
+        XCTAssertEqual(pixel(decoded, x: 0, y: 20)[3], 0, "image edge stays outside the shadow silhouette")
+
+        var strongestShadow: UInt8 = 0
+        for y in 0..<decoded.height {
+            for x in 0..<decoded.width where !(18...21).contains(x) || !(18...21).contains(y) {
+                strongestShadow = max(strongestShadow, pixel(decoded, x: x, y: y)[3])
+            }
+        }
+        XCTAssertGreaterThan(strongestShadow, 0, "a soft shadow is emitted around the subject")
+    }
+
     // MARK: - Animated Asset invariants
 
     /// Animated GIFs are cropped frame by frame: frame count, per-frame
@@ -190,6 +309,15 @@ final class CropperTests: XCTestCase {
         return url
     }
 
+    private func writeJPEG(_ image: CGImage, name: String) throws -> URL {
+        let url = workDirectory.appendingPathComponent(name)
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(
+            url as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return url
+    }
+
     private func writeAnimatedGIF(
         name: String,
         size: Int,
@@ -223,6 +351,12 @@ final class CropperTests: XCTestCase {
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
               let buffer = RGBABuffer(image: image)
         else { return nil }
+        let rgba = Array(UnsafeBufferPointer(start: buffer.pixels, count: buffer.width * buffer.height * 4))
+        return (buffer.width, buffer.height, rgba)
+    }
+
+    private func decodeRGBA(_ image: CGImage) -> (width: Int, height: Int, rgba: [UInt8])? {
+        guard let buffer = RGBABuffer(image: image) else { return nil }
         let rgba = Array(UnsafeBufferPointer(start: buffer.pixels, count: buffer.width * buffer.height * 4))
         return (buffer.width, buffer.height, rgba)
     }

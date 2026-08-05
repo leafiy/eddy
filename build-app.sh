@@ -2,7 +2,8 @@
 # Builds Eddy.app in an ignored, Spotlight-excluded build directory.
 # Requires macOS with the Xcode command line tools (xcode-select --install).
 set -eu
-cd "$(dirname "$0")"
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+cd "$SCRIPT_DIR"
 
 TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
@@ -21,12 +22,19 @@ if [ "${UNIVERSAL:-0}" = "1" ]; then
     ARCH_FLAGS="--arch arm64 --arch x86_64"
 fi
 
-SCRATCH_PATH="${SCRATCH_PATH:-"${TMPDIR%/}/leafiy-swift-builds/eddy"}"
+BUILD_ROOT="${BUILD_ROOT:-"$PWD/build.noindex"}"
+mkdir -p "$BUILD_ROOT"
+BUILD_ROOT=$(CDPATH= cd -- "$BUILD_ROOT" && pwd -P)
+# Share the persistent SwiftPM cache with release.sh. Architecture-specific
+# products coexist under this directory, so native and release builds can reuse
+# dependency checkouts without mixing their binaries. Resolve mirror paths to
+# the real storage path so Clang never sees two names for the same module cache.
+SCRATCH_PATH="${SCRATCH_PATH:-"$BUILD_ROOT/swift-release"}"
+mkdir -p "$SCRATCH_PATH"
+SCRATCH_PATH=$(CDPATH= cd -- "$SCRATCH_PATH" && pwd -P)
 swift build -c release $ARCH_FLAGS --scratch-path "$SCRATCH_PATH"
 BIN_DIR=$(swift build -c release $ARCH_FLAGS --scratch-path "$SCRATCH_PATH" --show-bin-path)
-BUILD_ROOT="${BUILD_ROOT:-"$PWD/build.noindex"}"
 APP_OUTPUT_DIR="${APP_OUTPUT_DIR:-"$BUILD_ROOT/app"}"
-mkdir -p "$BUILD_ROOT"
 
 compile_app_icon_assets() { # $1 = source png, $2 = destination resources dir
     "$ICON_COMPILER" "$1" "$2" "${TMPDIR%/}/leafiy-icon-builds/eddy"
