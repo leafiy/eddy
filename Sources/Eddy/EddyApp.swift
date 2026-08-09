@@ -5,15 +5,13 @@ import LeafiyUI
 import UniformTypeIdentifiers
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        LeafiyApplicationMode.enforceStandard()
+final class AppDelegate: LeafiyAppDelegate {
+    override func leafiyApplicationDidFinishLaunching(_ notification: Notification) {
         // Reconcile persisted launch-time preferences with process/system
         // state — like daisy/fifi, this repairs stale state after the app
         // bundle moves or settings.json is restored from a backup.
         let settings = SettingsStore.shared.settings
         LeafiyLaunchAtLogin.setEnabled(settings.launchAtLogin)
-        SoftwareUpdateController.shared.startAutomaticCheck()
         NSApp.activate(ignoringOtherApps: true)
         // Sweep orphan backups: crop-only backups from past sessions and
         // crash residue between a backup write and its entry's persist
@@ -22,12 +20,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task.detached(priority: .utility) {
             Originals.standard.cleanupOrphans(keeping: referenced)
         }
-    }
-
-    /// Keep running after the last window closes — like fifi, the menu-bar
-    /// item stays available (reopen via the icon, the Dock, or ⌘O drops).
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
     }
 
     /// Files dropped on the Dock icon or opened via "Open With".
@@ -167,19 +159,10 @@ struct EddyApp: App {
         // A single-instance Window, not a WindowGroup: reopening from the
         // menu bar must raise the existing queue, never spawn a second one
         // (canonical-app behavior, like daisy).
-        Window("Eddy", id: "main") {
+        Window(LeafiyAppIdentity.current.name, id: "main") {
             ContentView(settingsStore: settingsStore)
                 .id(appLanguage)
-                .background {
-                    LeafiyWindowAccessor { window in
-                        LeafiyWindowRegistry.register(
-                            window,
-                            id: "main",
-                            role: .primary,
-                            title: "Eddy"
-                        )
-                    }
-                }
+                .leafiyWindow(id: "main", role: .primary)
         }
         .defaultSize(width: 640, height: 420)
         .windowResizability(.contentMinSize)
@@ -188,8 +171,9 @@ struct EddyApp: App {
         }
 
         MenuBarExtra {
-            EddyMenuContent()
-                .id(appLanguage)
+            LeafiyFamilyMenu(language: appLanguage) {
+                EddyMenuContent()
+            }
         } label: {
             EddyMenuBarIcon()
                 .id(appLanguage)
@@ -197,15 +181,10 @@ struct EddyApp: App {
         .menuBarExtraStyle(.menu)
 
         Settings {
-            SettingsScaffold {
+            LeafiyFamilySettings(language: appLanguage) {
                 EddyGeneralSettingsPane(settingsStore: settingsStore)
                 QuickShareSettingsPane(settings: quickShareBinding)
-                AboutPane(
-                    tagline: L("Drag-and-drop image compression — files are optimized in place."),
-                    copyright: L("© 2026 Leafiy")
-                )
             }
-            .id(appLanguage)
         }
     }
 }
@@ -213,19 +192,8 @@ struct EddyApp: App {
 private struct EddyMenuBarIcon: View {
     @ObservedObject private var store = Store.shared
 
-    private static let baseIcon: NSImage = {
-        let base = LeafiyMenuBarIconRenderer.baseIcon(
-            NSImage.eddyIcon(),
-            symbolFallback: "photo.on.rectangle.angled",
-            accessibilityDescription: "Eddy"
-        )
-        base.accessibilityDescription = "Eddy"
-        return base
-    }()
-
     var body: some View {
-        Image(nsImage: LeafiyMenuBarIconRenderer.image(base: Self.baseIcon, status: status))
-            .accessibilityLabel(Text(verbatim: "Eddy"))
+        LeafiyMenuBarLabel(status: status)
     }
 
     private var status: LeafiyMenuBarStatus {
@@ -242,21 +210,6 @@ private struct EddyMenuBarIcon: View {
     }
 }
 
-private extension NSImage {
-    static func eddyIcon() -> NSImage? {
-        let resourceBundle = LeafiyLocalization.moduleBundle(package: "eddy", target: "eddy")
-        for bundle in [resourceBundle, Bundle.main] {
-            guard let url = bundle.url(forResource: "eddy", withExtension: "png"),
-                  let image = NSImage(contentsOf: url) else {
-                continue
-            }
-            image.accessibilityDescription = "Eddy"
-            return image
-        }
-        return nil
-    }
-}
-
 private struct EddyMenuContent: View {
     @Environment(\.openWindow) private var openWindow
 
@@ -270,7 +223,6 @@ private struct EddyMenuContent: View {
         Button(L("History")) {
             EddyActions.toggleHistory(openWindow)
         }
-        LeafiyMenuTail()
     }
 }
 

@@ -18,6 +18,10 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 cd "$SCRIPT_DIR"
 
+FAMILY_CONTRACT="../leafiy-ui/scripts/check-app-family-contract.sh"
+[ -x "$FAMILY_CONTRACT" ] || { echo "error: shared app-family contract not found: $FAMILY_CONTRACT"; exit 1; }
+"$FAMILY_CONTRACT" "$PWD"
+
 command -v swift >/dev/null 2>&1 || { echo "error: needs macOS with Xcode command line tools"; exit 1; }
 APP_ICON_SOURCE="eddy.png"
 MENU_ICON_SOURCE="Sources/Eddy/Resources/eddy.png"
@@ -395,10 +399,10 @@ compile_app_icon_assets() { # $1 = source png, $2 = destination dir
 build_dmg() { # $1 = arch
     arch="$1"
     echo "== building $arch =="
-    swift build -c release --arch "$arch" \
+    swift build -c release --disable-build-manifest-caching --arch "$arch" \
         --scratch-path "$SWIFT_SCRATCH" \
         --disable-automatic-resolution
-    bin_dir=$(swift build -c release --arch "$arch" \
+    bin_dir=$(swift build -c release --disable-build-manifest-caching --arch "$arch" \
         --scratch-path "$SWIFT_SCRATCH" \
         --disable-automatic-resolution \
         --show-bin-path)
@@ -475,7 +479,7 @@ HEAD_SHA=$(git rev-parse HEAD)
 rm -rf "$WORK_ROOT"
 mkdir -p "$WORK_ROOT" "$ARTIFACT_DIR"
 echo "== running release tests =="
-swift test -c release \
+swift test -c release --disable-build-manifest-caching \
     --scratch-path "$SWIFT_SCRATCH" \
     --disable-automatic-resolution
 arm64_dmg="$ARTIFACT_DIR/eddy-$VERSION-arm64.dmg"

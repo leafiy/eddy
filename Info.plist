@@ -48,6 +48,8 @@
 	<string>14.0</string>
 	<key>LeafiyUpdateFeedURL</key>
 	<string>https://leafiy.com/updates/eddy.json</string>
+	<key>LeafiyMenuBarIconFile</key>
+	<string>eddy.png</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

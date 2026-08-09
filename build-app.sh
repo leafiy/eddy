@@ -5,6 +5,10 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 cd "$SCRIPT_DIR"
 
+FAMILY_CONTRACT="../leafiy-ui/scripts/check-app-family-contract.sh"
+[ -x "$FAMILY_CONTRACT" ] || { echo "error: shared app-family contract not found: $FAMILY_CONTRACT"; exit 1; }
+"$FAMILY_CONTRACT" "$PWD"
+
 TEAM_ID="${TEAM_ID:-Q478GZN2AV}"
 SIGN_IDENTITY="${SIGN_IDENTITY:-}"
 
@@ -32,8 +36,8 @@ BUILD_ROOT=$(CDPATH= cd -- "$BUILD_ROOT" && pwd -P)
 SCRATCH_PATH="${SCRATCH_PATH:-"$BUILD_ROOT/swift-release"}"
 mkdir -p "$SCRATCH_PATH"
 SCRATCH_PATH=$(CDPATH= cd -- "$SCRATCH_PATH" && pwd -P)
-swift build -c release $ARCH_FLAGS --scratch-path "$SCRATCH_PATH"
-BIN_DIR=$(swift build -c release $ARCH_FLAGS --scratch-path "$SCRATCH_PATH" --show-bin-path)
+swift build -c release --disable-build-manifest-caching $ARCH_FLAGS --scratch-path "$SCRATCH_PATH"
+BIN_DIR=$(swift build -c release --disable-build-manifest-caching $ARCH_FLAGS --scratch-path "$SCRATCH_PATH" --show-bin-path)
 APP_OUTPUT_DIR="${APP_OUTPUT_DIR:-"$BUILD_ROOT/app"}"
 
 compile_app_icon_assets() { # $1 = source png, $2 = destination resources dir
