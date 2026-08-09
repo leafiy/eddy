@@ -2,20 +2,19 @@ import AppKit
 import LeafiyUICore
 import SwiftUI
 import LeafiyUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LeafiyApplicationMode.enforceStandard()
         // Reconcile persisted launch-time preferences with process/system
         // state — like daisy/fifi, this repairs stale state after the app
         // bundle moves or settings.json is restored from a backup.
         let settings = SettingsStore.shared.settings
         LeafiyLaunchAtLogin.setEnabled(settings.launchAtLogin)
         SoftwareUpdateController.shared.startAutomaticCheck()
-        LeafiyDockIcon.setVisible(settings.showDockIcon)
-        if settings.showDockIcon {
-            NSApp.activate(ignoringOtherApps: true)
-        }
+        NSApp.activate(ignoringOtherApps: true)
         // Sweep orphan backups: crop-only backups from past sessions and
         // crash residue between a backup write and its entry's persist
         // (Backup lifecycle, ADR-0001).
@@ -44,7 +43,79 @@ enum EddyWindows {
     static func presentMain(_ openWindow: OpenWindowAction) {
         openWindow(id: "main")
         LeafiyWindowPresenter.presentWhenAvailable {
-            NSApp.windows.first { !($0 is NSPanel) && $0.identifier?.rawValue.hasPrefix("main") == true }
+            LeafiyWindowRegistry.window(id: "main")
+        }
+    }
+}
+
+@MainActor
+enum EddyActions {
+    static func openImages(_ openWindow: OpenWindowAction) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image, .folder]
+        panel.allowsMultipleSelection = true
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = false
+        panel.prompt = L("Open")
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK else { return }
+
+        let options = SettingsStore.shared.processingOptions
+        Store.shared.add(
+            urls: panel.urls,
+            quality: options.quality,
+            maxWidth: options.maxWidth,
+            format: options.format
+        )
+        EddyWindows.presentMain(openWindow)
+    }
+
+    static func toggleHistory(_ openWindow: OpenWindowAction) {
+        EddyWindows.presentMain(openWindow)
+        withAnimation(HistoryPanel.slideAnimation) {
+            HistoryStore.shared.isPresented.toggle()
+        }
+    }
+}
+
+private struct EddyCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button(L("Open")) {
+                EddyActions.openImages(openWindow)
+            }
+            .keyboardShortcut("o", modifiers: .command)
+        }
+        CommandGroup(replacing: .pasteboard) {
+            Button(L("Cut")) {
+                NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("x", modifiers: .command)
+            Button(L("Copy")) {
+                NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("c", modifiers: .command)
+            Button(L("Paste")) {
+                if NSApp.keyWindow?.firstResponder is NSText {
+                    NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+                } else {
+                    Store.shared.pasteFromClipboard()
+                }
+            }
+            .keyboardShortcut("v", modifiers: .command)
+            Button(L("Select All")) {
+                NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+            }
+            .keyboardShortcut("a", modifiers: .command)
+        }
+        CommandGroup(after: .windowArrangement) {
+            Button(L("History")) {
+                EddyActions.toggleHistory(openWindow)
+            }
+            .keyboardShortcut("y", modifiers: .command)
         }
     }
 }
@@ -96,41 +167,24 @@ struct EddyApp: App {
         // A single-instance Window, not a WindowGroup: reopening from the
         // menu bar must raise the existing queue, never spawn a second one
         // (canonical-app behavior, like daisy).
-        Window("eddy", id: "main") {
+        Window("Eddy", id: "main") {
             ContentView(settingsStore: settingsStore)
                 .id(appLanguage)
+                .background {
+                    LeafiyWindowAccessor { window in
+                        LeafiyWindowRegistry.register(
+                            window,
+                            id: "main",
+                            role: .primary,
+                            title: "Eddy"
+                        )
+                    }
+                }
         }
         .defaultSize(width: 640, height: 420)
         .windowResizability(.contentMinSize)
         .commands {
-            // Menu commands instead of onPasteCommand: they work regardless
-            // of which view has focus. The full pasteboard group is replaced,
-            // so Cut/Copy/Select All must be restored by hand — dropping them
-            // silently killed ⌘C in every text field (e.g. Settings → Share).
-            // Paste is smart: with a text editor focused it pastes text,
-            // otherwise it pastes images into the queue.
-            CommandGroup(replacing: .pasteboard) {
-                Button(L("Cut")) {
-                    NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("x", modifiers: .command)
-                Button(L("Copy")) {
-                    NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("c", modifiers: .command)
-                Button(L("Paste")) {
-                    if NSApp.keyWindow?.firstResponder is NSText {
-                        NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
-                    } else {
-                        Store.shared.pasteFromClipboard()
-                    }
-                }
-                .keyboardShortcut("v", modifiers: .command)
-                Button(L("Select All")) {
-                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
-                }
-                .keyboardShortcut("a", modifiers: .command)
-            }
+            EddyCommands()
         }
 
         MenuBarExtra {
@@ -214,10 +268,7 @@ private struct EddyMenuContent: View {
             Store.shared.pasteFromClipboard()
         }
         Button(L("History")) {
-            EddyWindows.presentMain(openWindow)
-            withAnimation(HistoryPanel.slideAnimation) {
-                HistoryStore.shared.isPresented = true
-            }
+            EddyActions.toggleHistory(openWindow)
         }
         LeafiyMenuTail()
     }
@@ -227,7 +278,7 @@ private struct EddyGeneralSettingsPane: View {
     @ObservedObject var settingsStore: SettingsStore
 
     var body: some View {
-        LeafiyGeneralPane(language: languageBinding, launchAtLogin: launchAtLoginBinding, dockIcon: showDockIconBinding, tail: {
+        LeafiyGeneralPane(language: languageBinding, launchAtLogin: launchAtLoginBinding, tail: {
             LabeledContent(L("Default quality")) {
                 HStack(spacing: LeafiyDesign.Spacing.s) {
                     Slider(value: qualityBinding, in: 10...100, step: 5)
@@ -263,13 +314,6 @@ private struct EddyGeneralSettingsPane: View {
         Binding(
             get: { settingsStore.settings.launchAtLogin },
             set: { newValue in settingsStore.update { $0.launchAtLogin = newValue } }
-        )
-    }
-
-    private var showDockIconBinding: Binding<Bool> {
-        Binding(
-            get: { settingsStore.settings.showDockIcon },
-            set: { newValue in settingsStore.update { $0.showDockIcon = newValue } }
         )
     }
 

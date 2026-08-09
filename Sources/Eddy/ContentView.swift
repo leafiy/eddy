@@ -38,8 +38,8 @@ struct ContentView: View {
     @ObservedObject private var store = Store.shared
     @ObservedObject var settingsStore: SettingsStore
     @State private var isDropTargeted = false
-    @State private var showingOpenPanel = false
     @ObservedObject private var history = HistoryStore.shared
+    @Environment(\.openWindow) private var openWindow
 
     private enum Metrics {
         /// Fixed slider width keeps the quality/size strip one compact line
@@ -55,16 +55,6 @@ struct ContentView: View {
                 store.add(urls: urls, quality: options.quality, maxWidth: options.maxWidth, format: options.format)
                 return true
             } isTargeted: { isDropTargeted = $0 }
-            .fileImporter(
-                isPresented: $showingOpenPanel,
-                allowedContentTypes: [.image, .folder],
-                allowsMultipleSelection: true
-            ) { result in
-                if case .success(let urls) = result {
-                    let options = settingsStore.processingOptions
-                    store.add(urls: urls, quality: options.quality, maxWidth: options.maxWidth, format: options.format)
-                }
-            }
             .overlay {
                 if isDropTargeted {
                     RoundedRectangle(cornerRadius: LeafiyDesign.Radius.card)
@@ -206,22 +196,18 @@ struct ContentView: View {
     @ToolbarContentBuilder private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .automatic) {
             Button {
-                showingOpenPanel = true
+                EddyActions.openImages(openWindow)
             } label: {
                 Label(L("Open"), systemImage: "folder")
             }
-            .keyboardShortcut("o", modifiers: .command)
             .help(L("Choose images or folders (⌘O)"))
         }
         ToolbarItem(placement: .automatic) {
             Button {
-                withAnimation(HistoryPanel.slideAnimation) {
-                    history.isPresented.toggle()
-                }
+                EddyActions.toggleHistory(openWindow)
             } label: {
                 Label(L("History"), systemImage: "clock.arrow.circlepath")
             }
-            .keyboardShortcut("y", modifiers: .command)
             .help(L("Show or hide compression history (⌘Y)"))
         }
         ToolbarItem(placement: .automatic) {

@@ -98,6 +98,10 @@ struct CropView: View {
         } message: {
             Text(editorError ?? "")
         }
+        .onCommand(
+            Selector(("undo:")),
+            perform: undoStack.isEmpty || isRemovingBackground ? nil : undo
+        )
     }
 
     // MARK: - Header
@@ -124,7 +128,6 @@ struct CropView: View {
                 Button { undo() } label: {
                     Label(L("Undo"), systemImage: "arrow.uturn.backward")
                 }
-                .keyboardShortcut("z", modifiers: .command)
                 .disabled(undoStack.isEmpty || isRemovingBackground)
                 .help(L("Undo last edit (⌘Z)"))
 
