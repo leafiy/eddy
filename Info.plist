@@ -39,17 +39,17 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0.5</string>
+	<string>1.0.6</string>
 	<key>CFBundleVersion</key>
-	<string>6</string>
+	<string>7</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
-	<key>LeafiyUpdateFeedURL</key>
-	<string>https://leafiy.com/updates/eddy.json</string>
 	<key>LeafiyMenuBarIconFile</key>
 	<string>eddy.png</string>
+	<key>LeafiyUpdateFeedURL</key>
+	<string>https://leafiy.com/updates/eddy.json</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>
