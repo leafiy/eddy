@@ -46,6 +46,8 @@
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
+	<key>LSUIElement</key>
+	<true/>
 	<key>LeafiyMenuBarIconFile</key>
 	<string>eddy.png</string>
 	<key>LeafiyUpdateFeedURL</key>
