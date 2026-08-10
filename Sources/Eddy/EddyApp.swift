@@ -12,6 +12,7 @@ final class AppDelegate: LeafiyAppDelegate {
         // bundle moves or settings.json is restored from a backup.
         let settings = SettingsStore.shared.settings
         LeafiyLaunchAtLogin.setEnabled(settings.launchAtLogin)
+        LeafiyApplicationPresentation.shared.apply(settings.applicationIconMode)
         NSApp.activate(ignoringOtherApps: true)
         // Sweep orphan backups: crop-only backups from past sessions and
         // crash residue between a backup write and its entry's persist
@@ -170,7 +171,7 @@ struct EddyApp: App {
             EddyCommands()
         }
 
-        MenuBarExtra {
+        LeafiyMenuBarExtra {
             LeafiyFamilyMenu(language: appLanguage) {
                 EddyMenuContent()
             }
@@ -178,8 +179,6 @@ struct EddyApp: App {
             EddyMenuBarIcon()
                 .id(appLanguage)
         }
-        .menuBarExtraStyle(.menu)
-
         Settings {
             LeafiyFamilySettings(language: appLanguage) {
                 EddyGeneralSettingsPane(settingsStore: settingsStore)
@@ -230,29 +229,34 @@ private struct EddyGeneralSettingsPane: View {
     @ObservedObject var settingsStore: SettingsStore
 
     var body: some View {
-        LeafiyGeneralPane(language: languageBinding, launchAtLogin: launchAtLoginBinding, tail: {
-            LabeledContent(L("Default quality")) {
-                HStack(spacing: LeafiyDesign.Spacing.s) {
-                    Slider(value: qualityBinding, in: 10...100, step: 5)
-                    Text("\(Int(settingsStore.settings.compressionQuality))%")
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
+        LeafiyGeneralPane(
+            language: languageBinding,
+            launchAtLogin: launchAtLoginBinding,
+            applicationIconMode: applicationIconModeBinding,
+            tail: {
+                LabeledContent(L("Default quality")) {
+                    HStack(spacing: LeafiyDesign.Spacing.s) {
+                        Slider(value: qualityBinding, in: 10...100, step: 5)
+                        Text("\(Int(settingsStore.settings.compressionQuality))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            }
-            Picker(L("Save format"), selection: saveFormatBinding) {
-                ForEach(SaveFormat.allCases) { format in
-                    Text(format.title).tag(format)
+                Picker(L("Save format"), selection: saveFormatBinding) {
+                    ForEach(SaveFormat.allCases) { format in
+                        Text(format.title).tag(format)
+                    }
                 }
-            }
-            Picker(L("Max width"), selection: resizeMaxWidthBinding) {
-                ForEach(ResizeMaxWidthOption.all) { option in
-                    Text(option.title).tag(option.width)
+                Picker(L("Max width"), selection: resizeMaxWidthBinding) {
+                    ForEach(ResizeMaxWidthOption.all) { option in
+                        Text(option.title).tag(option.width)
+                    }
                 }
+                Text(L("Images are optimized in place — choosing PNG or JPEG converts other formats and replaces the original file. These defaults are used for new drops."))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            Text(L("Images are optimized in place — choosing PNG or JPEG converts other formats and replaces the original file. These defaults are used for new drops."))
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        })
+        )
     }
 
     private var languageBinding: Binding<AppLanguage> {
@@ -266,6 +270,13 @@ private struct EddyGeneralSettingsPane: View {
         Binding(
             get: { settingsStore.settings.launchAtLogin },
             set: { newValue in settingsStore.update { $0.launchAtLogin = newValue } }
+        )
+    }
+
+    private var applicationIconModeBinding: Binding<LeafiyApplicationIconMode> {
+        Binding(
+            get: { settingsStore.settings.applicationIconMode },
+            set: { newValue in settingsStore.update { $0.applicationIconMode = newValue } }
         )
     }
 

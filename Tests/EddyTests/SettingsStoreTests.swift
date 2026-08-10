@@ -18,7 +18,7 @@ final class SettingsStoreTests: XCTestCase {
             defaultSaveFormat: .jpeg,
             appLanguage: "zh-Hans",
             launchAtLogin: true,
-            showDockIcon: false,
+            applicationIconMode: .dock,
             quickShare: QuickShareSettings(
                 provider: .s3,
                 endpointURL: "https://account-id.r2.cloudflarestorage.com",
@@ -39,7 +39,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(payload["defaultSaveFormat"] as? String, "jpeg")
         XCTAssertEqual(payload["appLanguage"] as? String, "zh-Hans")
         XCTAssertEqual(payload["launchAtLogin"] as? Bool, true)
-        XCTAssertEqual(payload["showDockIcon"] as? Bool, false)
+        XCTAssertEqual(payload["applicationIconMode"] as? String, "dock")
         let quickShare = try XCTUnwrap(payload["quickShare"] as? [String: Any])
         XCTAssertEqual(quickShare["provider"] as? String, "s3")
         XCTAssertEqual(quickShare["endpointURL"] as? String, "https://account-id.r2.cloudflarestorage.com")
@@ -56,21 +56,27 @@ final class SettingsStoreTests: XCTestCase {
     func testAppSettingsDecodingDefaultsMissingOptionalSettingsAndPreservesValues() throws {
         let missing = try JSONDecoder().decode(AppSettings.self, from: Data("{}".utf8))
         XCTAssertFalse(missing.launchAtLogin)
-        XCTAssertTrue(missing.showDockIcon)
+        XCTAssertEqual(missing.applicationIconMode, .menuBar)
 
         let configured = try JSONDecoder().decode(
             AppSettings.self,
-            from: Data(#"{"launchAtLogin":true,"showDockIcon":false}"#.utf8)
+            from: Data(#"{"launchAtLogin":true,"applicationIconMode":"dock"}"#.utf8)
         )
         XCTAssertTrue(configured.launchAtLogin)
-        XCTAssertFalse(configured.showDockIcon)
+        XCTAssertEqual(configured.applicationIconMode, .dock)
 
         let roundTripped = try JSONDecoder().decode(
             AppSettings.self,
             from: JSONEncoder().encode(configured)
         )
         XCTAssertTrue(roundTripped.launchAtLogin)
-        XCTAssertFalse(roundTripped.showDockIcon)
+        XCTAssertEqual(roundTripped.applicationIconMode, .dock)
+
+        let legacy = try JSONDecoder().decode(
+            AppSettings.self,
+            from: Data(#"{"showDockIcon":true}"#.utf8)
+        )
+        XCTAssertEqual(legacy.applicationIconMode, .menuBar)
     }
 
     func testMigrationAdoptsLegacyUserDefaultsValues() throws {

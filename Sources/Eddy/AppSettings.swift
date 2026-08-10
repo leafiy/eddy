@@ -8,7 +8,7 @@ struct AppSettings: Codable, Equatable, LeafiyAppSettings {
     var defaultSaveFormat: SaveFormat
     var appLanguage: String
     var launchAtLogin: Bool
-    var showDockIcon: Bool
+    var applicationIconMode: LeafiyApplicationIconMode
     var quickShare: QuickShareSettings
 
     static var defaults: AppSettings { AppSettings() }
@@ -20,7 +20,7 @@ struct AppSettings: Codable, Equatable, LeafiyAppSettings {
         defaultSaveFormat: SaveFormat = .keep,
         appLanguage: String = AppLanguage.system.rawValue,
         launchAtLogin: Bool = false,
-        showDockIcon: Bool = true,
+        applicationIconMode: LeafiyApplicationIconMode = .menuBar,
         quickShare: QuickShareSettings = AppSettings.defaultQuickShare
     ) {
         self.compressionQuality = compressionQuality
@@ -28,7 +28,7 @@ struct AppSettings: Codable, Equatable, LeafiyAppSettings {
         self.defaultSaveFormat = defaultSaveFormat
         self.appLanguage = appLanguage
         self.launchAtLogin = launchAtLogin
-        self.showDockIcon = showDockIcon
+        self.applicationIconMode = applicationIconMode
         self.quickShare = quickShare
     }
 
@@ -40,7 +40,10 @@ struct AppSettings: Codable, Equatable, LeafiyAppSettings {
         defaultSaveFormat = try container.decodeIfPresent(SaveFormat.self, forKey: .defaultSaveFormat) ?? defaults.defaultSaveFormat
         appLanguage = try container.decodeIfPresent(String.self, forKey: .appLanguage) ?? defaults.appLanguage
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? defaults.launchAtLogin
-        showDockIcon = try container.decodeIfPresent(Bool.self, forKey: .showDockIcon) ?? defaults.showDockIcon
+        applicationIconMode = try container.decodeIfPresent(
+            LeafiyApplicationIconMode.self,
+            forKey: .applicationIconMode
+        ) ?? defaults.applicationIconMode
         quickShare = try container.decodeIfPresent(QuickShareSettings.self, forKey: .quickShare) ?? defaults.quickShare
     }
 
