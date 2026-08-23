@@ -20,6 +20,9 @@ cd "$SCRIPT_DIR"
 
 FAMILY_CONTRACT="../leafiy-ui/scripts/check-app-family-contract.sh"
 [ -x "$FAMILY_CONTRACT" ] || { echo "error: shared app-family contract not found: $FAMILY_CONTRACT"; exit 1; }
+BUILD_COMMON="../leafiy-ui/scripts/macos-app-build-common.sh"
+[ -r "$BUILD_COMMON" ] || { echo "error: shared macOS build policy not found: $BUILD_COMMON"; exit 1; }
+. "$BUILD_COMMON"
 "$FAMILY_CONTRACT" "$PWD"
 
 command -v swift >/dev/null 2>&1 || { echo "error: needs macOS with Xcode command line tools"; exit 1; }
@@ -399,13 +402,12 @@ compile_app_icon_assets() { # $1 = source png, $2 = destination dir
 build_dmg() { # $1 = arch
     arch="$1"
     echo "== building $arch =="
-    swift build -c release --disable-build-manifest-caching --arch "$arch" \
-        --scratch-path "$SWIFT_SCRATCH" \
+    leafiy_swift_release_build "$SWIFT_SCRATCH" \
+        --arch "$arch" \
         --disable-automatic-resolution
-    bin_dir=$(swift build -c release --disable-build-manifest-caching --arch "$arch" \
-        --scratch-path "$SWIFT_SCRATCH" \
-        --disable-automatic-resolution \
-        --show-bin-path)
+    bin_dir=$(leafiy_swift_release_bin_path "$SWIFT_SCRATCH" \
+        --arch "$arch" \
+        --disable-automatic-resolution)
 
     app="$WORK_ROOT/$arch/Eddy.app"
     rm -rf "$WORK_ROOT/$arch"
@@ -415,7 +417,7 @@ build_dmg() { # $1 = arch
         echo "error: packaged app version does not match $VERSION_NUMBER"
         exit 1
     }
-    cp "$bin_dir/eddy" "$app/Contents/MacOS/Eddy"
+    leafiy_install_release_executable "$bin_dir/eddy" "$app/Contents/MacOS/Eddy"
     printf 'APPL????' > "$app/Contents/PkgInfo"
     cp "$WORK_ROOT/AppIcon.icns" "$WORK_ROOT/Assets.car" "$app/Contents/Resources/"
     cp "$MENU_ICON_SOURCE" "$app/Contents/Resources/eddy.png"
@@ -427,10 +429,7 @@ build_dmg() { # $1 = arch
         cp -R "$bin_dir/LeafiyUI_LeafiyUI.bundle" "$app/Contents/Resources/"
     fi
 
-    [ -f "$app/Contents/Resources/AppIcon.icns" ] || { echo "error: AppIcon.icns is missing"; exit 1; }
-    [ -f "$app/Contents/Resources/Assets.car" ] || { echo "error: Assets.car is missing"; exit 1; }
-    [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist")" = "AppIcon" ] || { echo "error: CFBundleIconName must be AppIcon"; exit 1; }
-    cmp -s "$MENU_ICON_SOURCE" "$app/Contents/Resources/eddy.png" || { echo "error: menu bar icon does not match $MENU_ICON_SOURCE"; exit 1; }
+    leafiy_validate_app_icon_contract "$app" "$MENU_ICON_SOURCE" "eddy.png"
 
     if [ "$SIGN_IDENTITY" = "-" ]; then
         codesign --force --sign - "$app"
@@ -450,8 +449,7 @@ build_dmg() { # $1 = arch
     cp -R "$app" "$staging/"
     ln -s /Applications "$staging/Applications"
     dmg="$ARTIFACT_DIR/eddy-$VERSION-$arch.dmg"
-    rm -f "$dmg"
-    hdiutil create -volname "Eddy" -srcfolder "$staging" -format UDZO -quiet "$dmg"
+    leafiy_create_compressed_dmg "Eddy" "$staging" "$dmg"
     if [ "$SIGN_IDENTITY" != "-" ]; then
         codesign --force --timestamp --sign "$SIGN_IDENTITY" "$dmg"
         codesign --verify --verbose=2 "$dmg"
