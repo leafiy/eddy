@@ -3,7 +3,7 @@
 # and release, optional Gitea mirror. The flow, every environment knob, and the
 # usage lines live in ../leafiy-ui/scripts/macos-app-release-common.sh
 # (ADR-0012); this file only declares the app.
-#   sh release.sh --prepare [v1.2.3]   sh release.sh [v1.2.3]   PUBLISH_TO_LEAFIY=0 PUBLISH_TO_GITHUB=0 sh release.sh
+#   sh release.sh --prepare [v1.2.3]   sh release.sh [v1.2.3]   PUSH_SOURCE=0 PUBLISH_TO_LEAFIY=0 PUBLISH_TO_GITHUB=0 sh release.sh
 set -eu
 cd "$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)"
 
