@@ -81,6 +81,8 @@ row, follow the Gap Protocol at the end — never improvise in the app.
 | File drops on the menu-bar icon | `LeafiyMenuBarDropTarget` | own status-item drag handling |
 | Dragging files out (lazy) | `LeafiyFilePromise` + `.leafiyFilePromiseDragOut` / `.leafiyFilePromisesDragOut` | `NSFilePromiseProvider` plumbing, `onDrag` with own providers |
 | Diagnostics (`--leafiy-doctor`) | `LeafiyDiagnostics.doctorReport` / `writeLaunchReport` | own report format |
+| Confirmation, notice, or error alert | `LeafiyAlert.confirm(_:message:confirmTitle:cancelTitle:style:destructive:) -> Bool`, `LeafiyAlert.notice(_:message:style:buttonTitle:)`, `LeafiyAlert.error(_:message:)`; test the copy via `confirmPresentation` / `noticePresentation` | `NSAlert()`, own activation or button order, `.alert` sheets for app-wide prompts |
+| Open or save file panel | `LeafiyFilePanel.chooseFile(types:…)`, `chooseFiles(types:allowsFolders:…)`, `chooseFolder(directory:canCreateDirectories:…)`, `save(suggestedName:types:…)`; test via `fileConfiguration` / `filesConfiguration` / `folderConfiguration` / `SaveConfiguration` | `NSOpenPanel()`, `NSSavePanel()`, `.fileImporter`, `.fileExporter` |
 
 ## Look (System-Native First, ADR-0003)
 
@@ -104,8 +106,7 @@ row, follow the Gap Protocol at the end — never improvise in the app.
 
 | I need | Status | Until it lands |
 |---|---|---|
-| Confirmation / error alert | gap — `LeafiyAlert`, see `.scratch/base-library-gaps/issues/01-leafiy-alert.md` | `NSAlert()` with a `// leafiy-gap: LeafiyAlert` marker |
-| Open / save file panel | gap — `LeafiyFilePanel`, see `.scratch/base-library-gaps/issues/02-leafiy-file-panel.md` | `NSOpenPanel()` / `NSSavePanel()` with a `// leafiy-gap: LeafiyFilePanel` marker |
+| — | no open gaps (LeafiyAlert and LeafiyFilePanel closed the last two) | when a new one appears, add a row here with its issue path |
 
 ## Gap Protocol
 

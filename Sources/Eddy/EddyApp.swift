@@ -44,19 +44,12 @@ enum EddyWindows {
 @MainActor
 enum EddyActions {
     static func openImages(_ openWindow: OpenWindowAction) {
-        let panel = NSOpenPanel() // leafiy-gap: LeafiyFilePanel
-        panel.allowedContentTypes = [.image, .folder]
-        panel.allowsMultipleSelection = true
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = false
-        panel.prompt = L("Open")
-        NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK else { return }
+        let urls = LeafiyFilePanel.chooseFiles(types: [.image, .folder], allowsFolders: true, prompt: L("Open"))
+        guard !urls.isEmpty else { return }
 
         let options = SettingsStore.shared.processingOptions
         Store.shared.add(
-            urls: panel.urls,
+            urls: urls,
             quality: options.quality,
             maxWidth: options.maxWidth,
             format: options.format
