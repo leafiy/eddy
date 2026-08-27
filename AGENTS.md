@@ -30,6 +30,10 @@ here to add domain behavior, not to design app infrastructure.
 - System-Native First: system controls, system text styles, semantic colors,
   `LeafiyDesign` tokens. No literal sizes, colors, radii, materials, or custom
   chrome.
+- `build-app.sh` and `release.sh` are declarations plus one shared call
+  (`leafiy_build_app_main` / `leafiy_release_main`); `install.sh` is generated.
+  Build, signing, notarization, and publishing logic lives in
+  `../leafiy-ui/scripts/` (ADR-0012) — change it there, never inline it here.
 - If the Base Library lacks what you need: stop and follow the Gap Protocol.
   Building it locally is the one thing this family forbids most.
 - Prefer small native utilities over service- or account-heavy architecture.

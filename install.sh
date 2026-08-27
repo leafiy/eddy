@@ -1,13 +1,16 @@
 #!/bin/sh
-# One-line installer for Eddy — avoids Gatekeeper quarantine entirely because
-# curl (unlike browsers) does not attach the com.apple.quarantine flag.
+# One-line installer for Eddy. Curl avoids browser-added Gatekeeper quarantine.
 #
 #   curl -fsSL http://192.168.52.4:5010/leafiy/eddy/raw/branch/main/install.sh | sh
 #
+# Generated from leafiy-ui/templates/APP_INSTALL.sh by
+# scripts/sync-app-install-scripts.sh; the family contract rejects edits here.
 set -eu
 
 GITEA_URL="${GITEA_URL:-http://192.168.52.4:5010}"
 OWNER_REPO="${OWNER_REPO:-leafiy/eddy}"
+APP_NAME="Eddy"
+APP_SLUG="eddy"
 
 case "$(uname -m)" in
     arm64)  ARCH=arm64 ;;
@@ -27,25 +30,26 @@ for asset in release.get('assets', []):
 ")
 [ -n "$DMG_URL" ] || { echo "error: no $ARCH DMG found in the latest release"; exit 1; }
 
-TMP_DMG=$(mktemp -t eddy).dmg
+TMP_DMG=$(mktemp -t "$APP_SLUG").dmg
 trap 'rm -f "$TMP_DMG"' EXIT
 echo "downloading $DMG_URL"
 curl -fSL -o "$TMP_DMG" "$DMG_URL"
 
 echo "installing to /Applications..."
 MOUNT_POINT=$(hdiutil attach -nobrowse -readonly "$TMP_DMG" | awk -F'\t' '/\/Volumes\//{print $NF; exit}')
-[ -d "$MOUNT_POINT/Eddy.app" ] || { echo "error: Eddy.app not found in DMG"; hdiutil detach "$MOUNT_POINT" -quiet; exit 1; }
+[ -d "$MOUNT_POINT/$APP_NAME.app" ] || { echo "error: $APP_NAME.app not found in DMG"; hdiutil detach "$MOUNT_POINT" -quiet; exit 1; }
 
 DEST=/Applications
 [ -w "$DEST" ] || DEST="$HOME/Applications"
 mkdir -p "$DEST"
-rm -rf "$DEST/Eddy.app" "$DEST/eddy.app"
-ditto "$MOUNT_POINT/Eddy.app" "$DEST/Eddy.app"
+# Older builds installed under the lowercase name; replace both spellings.
+rm -rf "$DEST/$APP_NAME.app" "$DEST/$APP_SLUG.app"
+ditto "$MOUNT_POINT/$APP_NAME.app" "$DEST/$APP_NAME.app"
 hdiutil detach "$MOUNT_POINT" -quiet
 
 # Register with LaunchServices so Launchpad/Spotlight pick it up immediately.
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST/Eddy.app" || true
-mdimport "$DEST/Eddy.app" >/dev/null 2>&1 || true
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST/$APP_NAME.app" || true
+mdimport "$DEST/$APP_NAME.app" >/dev/null 2>&1 || true
 
-echo "installed: $DEST/Eddy.app"
-open "$DEST/Eddy.app"
+echo "installed: $DEST/$APP_NAME.app"
+open "$DEST/$APP_NAME.app"
