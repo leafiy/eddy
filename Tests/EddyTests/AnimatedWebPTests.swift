@@ -190,8 +190,9 @@ final class AnimatedWebPTests: XCTestCase {
 
     private func noisyFrames(width: Int, height: Int, count: Int) -> [CGImage] {
         (0..<count).map { frame in
-            makeImage(width: width, height: height) { x, y in
-                let seed = UInt32((frame + 1) * 1_103 + x * 313 + y * 911)
+            let frameSeed = UInt32(frame + 1) &* 1_103
+            return makeImage(width: width, height: height) { x, y in
+                let seed = frameSeed &+ UInt32(x) &* 313 &+ UInt32(y) &* 911
                 return (
                     UInt8(truncatingIfNeeded: seed &* 17),
                     UInt8(truncatingIfNeeded: seed &* 43),
