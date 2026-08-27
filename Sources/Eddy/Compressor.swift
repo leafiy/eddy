@@ -202,7 +202,7 @@ enum Compressor {
               )
         else { return image }
         let bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
-        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1)) // leafiy-exception: fills the exported bitmap, not UI
         context.fill(bounds)
         context.draw(image, in: bounds)
         return context.makeImage() ?? image

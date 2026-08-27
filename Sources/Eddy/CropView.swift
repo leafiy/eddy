@@ -248,7 +248,7 @@ struct CropView: View {
                     // legacy rectangular image-edge overlay here.
                     if addBorder, !isBackgroundRemoved {
                         Rectangle()
-                            .strokeBorder(Color(white: 0.62), lineWidth: max(unit, 0.5))
+                            .strokeBorder(Color(white: 0.62), lineWidth: max(unit, 0.5)) // leafiy-exception: preview of the border baked into the exported image
                     }
                 }
                 .shadow(
@@ -264,7 +264,7 @@ struct CropView: View {
                 path.addRect(CGRect(origin: .zero, size: viewSize))
                 path.addRect(selectionRect)
             }
-            .fill(Color.black.opacity(0.35), style: FillStyle(eoFill: true))
+            .fill(Color.black.opacity(0.35), style: FillStyle(eoFill: true)) // leafiy-exception: crop dimming drawn over image pixels
             .allowsHitTesting(false)
 
             selectionChrome(selectionRect)
@@ -292,7 +292,7 @@ struct CropView: View {
         ForEach(Handle.resizeHandles, id: \.self) { handle in
             let center = handle.position(in: rect)
             Circle()
-                .fill(Color.white)
+                .fill(Color.white) // leafiy-exception: crop handle drawn over image pixels
                 .overlay(Circle().stroke(Color.accentColor, lineWidth: 1.5))
                 .frame(width: 10, height: 10)
                 .position(center)
@@ -464,11 +464,11 @@ struct CropView: View {
             ZStack {
                 if choice == .transparent {
                     Checkerboard()
-                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                        .clipShape(RoundedRectangle(cornerRadius: LeafiyDesign.Radius.control))
                 } else {
-                    RoundedRectangle(cornerRadius: 4).fill(fill)
+                    RoundedRectangle(cornerRadius: LeafiyDesign.Radius.control).fill(fill)
                 }
-                RoundedRectangle(cornerRadius: 4)
+                RoundedRectangle(cornerRadius: LeafiyDesign.Radius.control)
                     .strokeBorder(
                         background == choice ? Color.accentColor : Color(nsColor: .separatorColor),
                         lineWidth: background == choice ? 2 : 1
@@ -630,14 +630,14 @@ struct CropView: View {
         let cgBackground: CGColor?
         switch background {
         case .white:
-            cgBackground = CGColor(gray: 1, alpha: 1)
+            cgBackground = CGColor(gray: 1, alpha: 1) // leafiy-exception: background baked into the exported image
         case .black:
-            cgBackground = CGColor(gray: 0, alpha: 1)
+            cgBackground = CGColor(gray: 0, alpha: 1) // leafiy-exception: background baked into the exported image
         case .transparent:
-            cgBackground = allowsTransparency ? nil : CGColor(gray: 1, alpha: 1)
+            cgBackground = allowsTransparency ? nil : CGColor(gray: 1, alpha: 1) // leafiy-exception: background baked into the exported image
         case .custom:
             cgBackground = NSColor(customColor).usingColorSpace(.sRGB)?.cgColor
-                ?? CGColor(gray: 1, alpha: 1)
+                ?? CGColor(gray: 1, alpha: 1) // leafiy-exception: background baked into the exported image
         }
         onSave(CropSpec(
             rect: selection.integral,
@@ -665,7 +665,7 @@ private struct Checkerboard: View {
                 while x < size.width {
                     context.fill(
                         Path(CGRect(x: x, y: y, width: square, height: square)),
-                        with: .color(Color(white: 0.8))
+                        with: .color(Color(white: 0.8)) // leafiy-exception: transparency checkerboard under image pixels
                     )
                     x += square * 2
                 }

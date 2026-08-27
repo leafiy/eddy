@@ -44,7 +44,7 @@ enum EddyWindows {
 @MainActor
 enum EddyActions {
     static func openImages(_ openWindow: OpenWindowAction) {
-        let panel = NSOpenPanel()
+        let panel = NSOpenPanel() // leafiy-gap: LeafiyFilePanel
         panel.allowedContentTypes = [.image, .folder]
         panel.allowsMultipleSelection = true
         panel.canChooseFiles = true

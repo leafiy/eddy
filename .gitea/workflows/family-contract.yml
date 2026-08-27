@@ -1,0 +1,17 @@
+# Installed by leafiy-ui/scripts/sync-app-agent-docs.sh. Runs the App Family
+# contract on every push; needs no macOS runner because the contract only
+# reads sources. Remove the file if this Gitea instance has Actions disabled.
+name: family-contract
+on: [push, pull_request]
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - uses: actions/checkout@v4
+        with:
+          repository: leafiy/leafiy-ui
+          path: leafiy-ui
+      - run: sh leafiy-ui/scripts/check-app-family-contract.sh "$PWD/app"

@@ -220,7 +220,7 @@ enum Cropper {
             context.setShadow(
                 offset: CGSize(width: 0, height: -standardShadowOffset * unit),
                 blur: standardShadowBlur * unit,
-                color: CGColor(gray: 0, alpha: standardShadowOpacity)
+                color: CGColor(gray: 0, alpha: standardShadowOpacity) // leafiy-exception: shadow rendered into the exported bitmap
             )
             context.draw(decoratedImage, in: drawRect)
             context.restoreGState()
@@ -229,7 +229,7 @@ enum Cropper {
         }
 
         if spec.border, spec.foregroundImage == nil {
-            context.setStrokeColor(CGColor(gray: 0.62, alpha: 1))
+            context.setStrokeColor(CGColor(gray: 0.62, alpha: 1)) // leafiy-exception: border rendered into the exported bitmap
             context.setLineWidth(unit)
             // Inset so the stroke sits on the image, not on the background.
             context.stroke(drawRect.insetBy(dx: unit / 2, dy: unit / 2))
