@@ -17,7 +17,7 @@ Eddy is a fast, lightweight image compressor built for macOS. Drop in images or 
 
 ## Quick Share
 
-Eddy can upload a finished image to your own compatible object-storage account and copy its public link, turning compression and sharing into one quick action.
+Eddy can upload a finished image to your own object storage — Amazon S3, Cloudflare R2, or any S3-compatible service such as Alibaba OSS, Tencent COS, or Backblaze B2 — and copy its link, turning compression and sharing into one quick action. The link is either a public link (optionally on your own CDN or custom domain) or an expiring private link for a bucket you keep private.
 
 ## Privacy
 

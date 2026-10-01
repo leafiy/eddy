@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import LeafiyUI
 import LeafiyUICore
 import SwiftUI
 
@@ -221,7 +222,7 @@ final class Store: ObservableObject {
     // MARK: - Quick Share
 
     /// Uploads the item's (compressed, in-place) file to the configured
-    /// object storage and copies the public link. Without a configured
+    /// object storage and copies its Share Link. Without a configured
     /// account, raises the setup prompt instead.
     func quickShare(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id }), !item.isSharing else { return }
@@ -234,14 +235,12 @@ final class Store: ObservableObject {
         let fileURL = item.url
         Task { [weak self] in
             do {
-                let link = try await QuickShareService.share(fileURL: fileURL, settings: settings)
-                let pasteboard = NSPasteboard.general
-                pasteboard.clearContents()
-                pasteboard.setString(link, forType: .string)
-                self?.showToast(L("Public link copied to clipboard."), seconds: 4)
+                let links = try await LeafiyQuickShare.share(fileURLs: [fileURL], settings: settings)
+                LeafiyQuickShare.copyLinks(links)
+                self?.showToast(LeafiyQuickShare.linksCopiedMessage(count: links.count), seconds: 4)
             } catch {
                 NSLog("Eddy quick share failed: %@", String(describing: error))
-                self?.showToast(error.localizedDescription, seconds: 5)
+                self?.showToast(LeafiyQuickShare.message(for: error), seconds: 5)
             }
             self?.update(id) { $0.isSharing = false }
         }

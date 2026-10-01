@@ -69,9 +69,7 @@
 "Open Settings" = "打开设置";
 "Cancel" = "取消";
 "Quick Share uploads compressed files to your own object storage. Add your storage account in Settings → Share first." = "快速分享会把压缩后的文件上传到你自己的对象存储。请先在“设置 → 分享”中填写存储账号。";
-"Quick Share — upload the compressed file and copy the public link" = "快速分享——上传压缩后的文件并复制公网链接";
-"Quick Share can’t read the file: %@" = "快速分享无法读取文件：%@";
-"Public link copied to clipboard." = "公网链接已复制到剪贴板。";
+"Quick Share — upload the compressed file and copy its link" = "快速分享——上传压缩后的文件并复制链接";
 
 /* History */
 "History" = "历史记录";

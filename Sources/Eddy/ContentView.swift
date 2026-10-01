@@ -301,7 +301,7 @@ struct ItemRow: View {
                 .buttonStyle(.borderless)
                 .disabled(!item.isShareable)
                 .opacity(item.isShareable ? 1 : 0.3)
-                .help(L("Quick Share — upload the compressed file and copy the public link"))
+                .help(L("Quick Share — upload the compressed file and copy its link"))
             }
         }
         .frame(width: LeafiyDesign.Size.rowIcon)
